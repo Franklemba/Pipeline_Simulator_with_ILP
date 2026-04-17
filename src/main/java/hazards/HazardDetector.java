@@ -4,41 +4,90 @@ import isa.Instruction;
 import isa.OpType;
 
 /**
- * Phase 1 Hazard Detection Unit — stalls only, no forwarding.
- *
- * ── Data Hazards (RAW) ───────────────────────────────────────────────────
- *  A RAW hazard occurs when the instruction in ID needs a register that
- *  is still being computed by an instruction in EX or MEM.
- *
- *  Without forwarding, we must stall until the producing instruction
- *  completes WB.  That means we stall if the destination register of
- *  the instruction in EX *or* MEM matches a source register of the
- *  instruction currently in ID.
- *
- * ── Control Hazards ──────────────────────────────────────────────────────
- *  A branch resolves at the ID stage (we read the registers and compute
- *  the outcome there).  If the branch is taken we have already fetched
- *  one wrong instruction into IF → flush it (1-cycle penalty).
- *  If the branch is not taken nothing extra needs to happen.
- *
- *  A JUMP is always taken → always flush the IF stage (1-cycle penalty).
- *
- * ── Structural Hazards ───────────────────────────────────────────────────
- *  In this single-issue in-order pipeline with separate instruction and
- *  data memories there are no structural hazards by construction.
- *  (Included as a comment for completeness and Phase 2 extension.)
+ * Hazard Detection Unit - Phase 1 (Stall-Only Strategy)
+ * 
+ * OVERVIEW:
+ * ========
+ * This unit identifies pipeline hazards and determines the appropriate response.
+ * Phase 1 uses a conservative approach: STALL on data hazards, FLUSH on control hazards.
+ * No data forwarding is implemented (that's Phase 2).
+ * 
+ * THREE TYPES OF HAZARDS:
+ * ======================
+ * 
+ * 1. DATA HAZARDS (RAW - Read After Write)
+ *    ----------------------------------------
+ *    Occurs when an instruction needs a register that's still being computed
+ *    by a previous instruction that hasn't completed yet.
+ *    
+ *    Example:
+ *      ADD R1, R2, R3    # R1 is being computed
+ *      ADD R4, R1, R5    # Needs R1 but it's not ready yet! → STALL
+ *    
+ *    Detection: Check if the instruction in ID reads a register that's being
+ *    written by an instruction in EX or MEM.
+ *    
+ *    Solution: STALL the pipeline (freeze IF and ID, inject bubble into EX)
+ *    until the producing instruction completes WB.
+ * 
+ * 2. CONTROL HAZARDS (Branches and Jumps)
+ *    ---------------------------------------
+ *    Occurs when we don't know which instruction to fetch next because a
+ *    branch/jump hasn't been resolved yet.
+ *    
+ *    Strategy: Assume branches are NOT TAKEN (optimistic prediction)
+ *    - If branch NOT taken: Continue normally (prediction was correct)
+ *    - If branch IS taken: FLUSH the wrong instruction from IF (1 cycle penalty)
+ *    - Jumps: Always taken, always flush (1 cycle penalty)
+ *    
+ *    Example:
+ *      BEQ R1, R2, TARGET    # Branch resolves in ID stage
+ *      ADD R3, R4, R5        # Already fetched, but might be wrong!
+ *      
+ *    If branch is taken, the ADD must be flushed (converted to bubble).
+ * 
+ * 3. STRUCTURAL HAZARDS
+ *    --------------------
+ *    Occurs when multiple instructions need the same hardware resource.
+ *    
+ *    This pipeline has NO structural hazards because:
+ *    - Separate instruction and data memories (Harvard architecture)
+ *    - Single-issue (only one instruction per stage)
+ *    - Dedicated hardware for each stage
+ *    
+ *    (Included for completeness and future phases)
+ * 
+ * WHY NO FORWARDING IN PHASE 1?
+ * =============================
+ * Forwarding (bypassing) would allow us to use results before they're written
+ * to the register file, reducing stalls. However, Phase 1 focuses on understanding
+ * the fundamental hazard types. Forwarding is added in Phase 2.
  */
 public class HazardDetector {
 
     // ── Data Hazard (RAW) ─────────────────────────────────────────────────
 
     /**
-     * Returns true if the instruction currently in the ID stage has a
-     * RAW dependency on the instruction in EX or MEM.
-     *
-     * @param idInst   instruction in the ID stage
-     * @param exInst   instruction in the EX stage  (may be null/NOP)
-     * @param memInst  instruction in the MEM stage (may be null/NOP)
+     * Detects Read-After-Write (RAW) data hazards.
+     * 
+     * A RAW hazard exists when:
+     * 1. The instruction in ID needs to READ a register (rs1 or rs2)
+     * 2. An instruction in EX or MEM will WRITE to that same register
+     * 3. The write hasn't completed yet (hasn't reached WB)
+     * 
+     * Visual example:
+     * 
+     *   Cycle 3:
+     *   IF: SUB R6, R4, R1
+     *   ID: ADD R4, R1, R5  ← needs R1
+     *   EX: ADD R1, R2, R3  ← will write R1 (not ready yet!)
+     *   
+     *   Result: STALL! ID can't proceed until R1 is written.
+     * 
+     * @param idInst   Instruction in ID stage (consumer)
+     * @param exInst   Instruction in EX stage (potential producer)
+     * @param memInst  Instruction in MEM stage (potential producer)
+     * @return true if a RAW hazard exists and pipeline must stall
      */
     public boolean detectRAW(Instruction idInst,
                              Instruction exInst,
@@ -74,16 +123,20 @@ public class HazardDetector {
     // ── Control Hazard ────────────────────────────────────────────────────
 
     /**
-     * Returns the number of pipeline bubbles (flush slots) required after
-     * a branch or jump has been resolved in the ID stage.
-     *
-     * Strategy: assume branch NOT taken (optimistic fetch).
-     *   - If the branch IS taken  → 1 bubble (the IF slot was wrong).
-     *   - If the branch NOT taken → 0 bubbles (fetch was correct).
-     *   - JUMP always             → 1 bubble.
-     *
-     * @param inst   the branch/jump instruction just decoded in ID
-     * @param taken  true if the branch was evaluated as taken
+     * Calculates the control hazard penalty (flush cycles needed).
+     * 
+     * BRANCH PREDICTION STRATEGY: Assume NOT TAKEN
+     * - Advantage: No penalty if prediction is correct (branch not taken)
+     * - Disadvantage: 1 cycle penalty if prediction is wrong (branch taken)
+     * 
+     * Alternative strategies (not implemented):
+     * - Always taken: Good for loops, bad for if-statements
+     * - Static prediction: Based on branch direction (backward = taken)
+     * - Dynamic prediction: Branch history table (Phase 2+)
+     * 
+     * @param inst   The branch/jump instruction being evaluated in ID
+     * @param taken  true if the branch condition evaluated to true
+     * @return Number of pipeline bubbles needed (0 or 1)
      */
     public int controlPenalty(Instruction inst, boolean taken) {
         if (inst == null || inst.isNop()) return 0;

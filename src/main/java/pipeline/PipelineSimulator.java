@@ -9,13 +9,45 @@ import stats.Statistics;
 import java.util.List;
 
 /**
- * 5-Stage In-Order Pipeline Simulator — Phase 1
- *
- * Stages : IF → ID → EX → MEM → WB
- * Hazards: stall-only (no forwarding), branch assumed NOT taken.
- *
- * Each call to tick() advances the simulation by exactly one clock cycle.
- * run() drives tick() until the pipeline drains.
+ * 5-Stage In-Order Pipeline Simulator
+ * 
+ * ARCHITECTURE OVERVIEW:
+ * =====================
+ * This simulator models a classic RISC pipeline with five stages:
+ * 
+ *   IF (Instruction Fetch) → ID (Instruction Decode) → EX (Execute) → 
+ *   MEM (Memory Access) → WB (Write Back)
+ * 
+ * Each stage is separated by pipeline registers (latches) that hold the state
+ * between stages. Instructions flow through the pipeline one stage per clock cycle.
+ * 
+ * HAZARD HANDLING (Phase 1):
+ * ==========================
+ * 1. DATA HAZARDS (RAW - Read After Write):
+ *    - Detected when an instruction needs a register that's still being computed
+ *    - Solution: STALL the pipeline (insert bubbles) until data is ready
+ *    - No forwarding in Phase 1 (conservative approach)
+ * 
+ * 2. CONTROL HAZARDS (Branches/Jumps):
+ *    - Branch prediction: Assume NOT TAKEN (optimistic)
+ *    - If branch IS taken: FLUSH the wrongly-fetched instruction (1 cycle penalty)
+ *    - Jumps: Always taken, always flush (1 cycle penalty)
+ * 
+ * 3. STRUCTURAL HAZARDS:
+ *    - None in this design (separate instruction/data memory, single-issue)
+ * 
+ * EXECUTION MODEL:
+ * ===============
+ * - Each tick() advances the pipeline by exactly one clock cycle
+ * - Stages process in REVERSE order (WB→MEM→EX→ID→IF) to ensure each
+ *   instruction moves exactly once per cycle
+ * - Pipeline drains when all instructions complete WB stage
+ * 
+ * PERFORMANCE METRICS:
+ * ===================
+ * - CPI (Cycles Per Instruction): Total cycles / Instructions completed
+ * - IPC (Instructions Per Cycle): Instructions completed / Total cycles
+ * - Stall counts: Data hazards vs Control hazards
  */
 public class PipelineSimulator {
 
@@ -100,10 +132,26 @@ public class PipelineSimulator {
     // ── Core Tick (one clock cycle) ───────────────────────────────────────
 
     /**
-     * Advance the pipeline by one cycle.
-     *
-     * Process order: WB → MEM → EX → (hazard check) → ID → IF
-     * Processing in reverse ensures each instruction moves exactly once.
+     * Advance the pipeline by one clock cycle.
+     * 
+     * CRITICAL: Stages must be processed in REVERSE order (WB → MEM → EX → ID → IF)
+     * to ensure each instruction advances exactly once per cycle. If we processed
+     * forward (IF → ID → ...), an instruction could move multiple stages in one cycle.
+     * 
+     * PIPELINE FLOW:
+     * =============
+     * 1. WB:  Complete the instruction, write results to register file
+     * 2. MEM: Access data memory (LOAD/STORE), promote to WB
+     * 3. EX:  Execute ALU operation, promote to MEM
+     * 4. HAZARD CHECK: Detect data dependencies before advancing ID/IF
+     * 5. ID:  Decode instruction, evaluate branches, handle control hazards
+     * 6. IF:  Fetch next instruction (or stall/flush based on hazards)
+     * 
+     * HAZARD RESPONSES:
+     * ================
+     * - RAW Data Hazard: Freeze IF and ID, inject bubble into EX
+     * - Branch Taken:    Flush IF and ID, redirect PC to branch target
+     * - Normal:          All stages advance, fetch next instruction
      */
     private void tick() {
 
@@ -192,8 +240,15 @@ public class PipelineSimulator {
     }
 
     /**
-     * ID: read register operands; for branches/jumps evaluate condition.
-     * Returns true if a branch was taken (control hazard).
+     * ID (Instruction Decode): Read register operands and evaluate branch conditions.
+     * 
+     * For branches, we evaluate the condition HERE (not in EX) because:
+     * - We need to know the outcome ASAP to minimize control hazard penalty
+     * - Register values are read in this stage
+     * - Early resolution = fewer wasted cycles
+     * 
+     * @param inst The instruction being decoded
+     * @return true if a branch/jump was taken (control hazard occurred)
      */
     private boolean doDecode(Instruction inst) {
         switch (inst.opCode.type) {
@@ -210,7 +265,16 @@ public class PipelineSimulator {
         }
     }
 
-    /** EX: compute the ALU result and store it in the EX latch. */
+    /**
+     * EX (Execute): Perform ALU computation and store result in the EX latch.
+     * 
+     * The ALU handles:
+     * - Arithmetic operations (ADD, SUB, MUL, DIV)
+     * - Logical operations (AND, OR, XOR)
+     * - Effective address calculation for LOAD/STORE (base + offset)
+     * 
+     * Results are stored in the pipeline register for the MEM stage to use.
+     */
     private void doExecute(Instruction inst, PipelineRegister exLatch) {
         int a = 0, b = 0;
         switch (inst.opCode.type) {
@@ -233,7 +297,15 @@ public class PipelineSimulator {
         exLatch.setAluResult(alu.execute(inst.opCode, a, b));
     }
 
-    /** MEM: read or write data memory. */
+    /**
+     * MEM (Memory Access): Read from or write to data memory.
+     * 
+     * - LOAD:  Read from memory at computed address, store in memResult
+     * - STORE: Write register value to memory at computed address
+     * - Other: Pass through (no memory operation)
+     * 
+     * The address comes from the ALU result computed in the EX stage.
+     */
     private void doMemoryAccess(Instruction inst,
                                 PipelineRegister exLatch,
                                 PipelineRegister memLatch) {
@@ -250,7 +322,15 @@ public class PipelineSimulator {
         }
     }
 
-    /** WB: write the result back to the register file. */
+    /**
+     * WB (Write Back): Write the final result to the register file.
+     * 
+     * - Arithmetic/Logical: Write ALU result to destination register
+     * - LOAD: Write memory data to destination register
+     * - STORE/Branch/Jump: No write-back needed
+     * 
+     * This is the final stage - instruction is now complete and retired.
+     */
     private void doWriteBack(Instruction inst, PipelineRegister memLatch) {
         switch (inst.opCode.type) {
             case ARITHMETIC:
