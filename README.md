@@ -3,25 +3,62 @@
 CS 510 – Advanced Computer Architecture  
 Phase 1: Basic 5-Stage Pipeline Simulator
 
-## Project Structure
+## 📚 Documentation
 
-This is a Maven-based Java project with the following structure:
+- **[README.md](README.md)** - Quick start guide and build instructions
+- **[ARCHITECTURE_GUIDE.md](ARCHITECTURE_GUIDE.md)** - Comprehensive explanation of how the simulator works
+
+## Overview
+
+This simulator models a classic 5-stage RISC pipeline processor that demonstrates how modern CPUs execute multiple instructions simultaneously through pipelining. It accurately simulates pipeline hazards and their performance impact.
+
+### The 5 Stages
+
+1. **IF** (Instruction Fetch) - Fetch instruction from memory
+2. **ID** (Instruction Decode) - Decode instruction and read registers  
+3. **EX** (Execute) - Perform ALU operations
+4. **MEM** (Memory Access) - Read/write data memory
+5. **WB** (Write Back) - Write results to registers
+
+### Hazards Simulated
+
+- **Data Hazards (RAW)**: When instructions depend on results not yet computed
+- **Control Hazards**: Branch mispredictions requiring pipeline flushes
+- **Solution**: Pipeline stalls and flushes (no forwarding in Phase 1)
+
+## Project Structure
 
 ```
 pipeline-simulator/
 ├── pom.xml                          # Maven configuration
-├── src/
-│   └── main/
-│       └── java/
-│           ├── Main.java            # Entry point
-│           ├── assembler/           # Assembly parser
-│           ├── hardware/            # ALU, registers, memory
-│           ├── hazards/             # Hazard detection
-│           ├── isa/                 # Instruction set architecture
-│           ├── pipeline/            # Pipeline simulator
-│           └── stats/               # Statistics tracking
-└── README.md
+├── README.md                        # This file
+├── ARCHITECTURE_GUIDE.md            # Detailed architecture explanation
+├── src/main/java/
+│   ├── Main.java                    # Entry point with test workloads
+│   ├── assembler/
+│   │   └── Assembler.java           # Converts assembly to instructions
+│   ├── hardware/
+│   │   ├── ALU.java                 # Arithmetic Logic Unit
+│   │   ├── RegisterFile.java       # 32 general-purpose registers
+│   │   └── DataMemory.java          # Word-addressable memory
+│   ├── hazards/
+│   │   └── HazardDetector.java      # Detects RAW and control hazards
+│   ├── isa/
+│   │   ├── Instruction.java         # Instruction representation
+│   │   ├── OpCode.java              # Supported operations
+│   │   └── OpType.java              # Operation categories
+│   ├── pipeline/
+│   │   ├── PipelineSimulator.java   # Main simulation engine
+│   │   └── PipelineRegister.java    # Inter-stage latches
+│   └── stats/
+│       └── Statistics.java          # Performance metrics
 ```
+
+## 📚 Documentation
+
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Fast lookup guide with examples
+- **[ARCHITECTURE_GUIDE.md](ARCHITECTURE_GUIDE.md)** - Comprehensive explanation of how everything works
+- **Source Code** - Heavily commented for educational purposes
 
 ## Prerequisites
 

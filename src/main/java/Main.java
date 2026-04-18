@@ -1,5 +1,3 @@
-package main;
-
 import assembler.Assembler;
 import pipeline.PipelineSimulator;
 import stats.Statistics;
