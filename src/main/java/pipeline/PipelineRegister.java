@@ -1,5 +1,6 @@
 package pipeline;
 
+import forwarding.ForwardingDecision;
 import isa.Instruction;
 
 /**
@@ -12,6 +13,8 @@ import isa.Instruction;
  *  ┌──────┐  IF/ID  ┌──────┐  ID/EX  ┌──────┐  EX/MEM  ┌──────┐  MEM/WB  ┌──────┐
  *  │  IF  │────────▶│  ID  │────────▶│  EX  │─────────▶│ MEM  │─────────▶│  WB  │
  *  └──────┘         └──────┘         └──────┘           └──────┘          └──────┘
+ *  
+ * Phase 2: Now also stores forwarding decisions for the EX stage.
  */
 public class PipelineRegister {
 
@@ -23,6 +26,9 @@ public class PipelineRegister {
 
     /** Value read from data memory during the MEM stage. */
     private int memResult;
+    
+    /** Forwarding decision for this instruction (Phase 2). */
+    private ForwardingDecision forwardingDecision;
 
     // ── Instruction slot ─────────────────────────────────────────────────
 
@@ -44,6 +50,7 @@ public class PipelineRegister {
         this.instruction = Instruction.NOP;
         this.aluResult   = 0;
         this.memResult   = 0;
+        this.forwardingDecision = null;
     }
 
     /** Clear the latch entirely (end-of-program drain). */
@@ -51,6 +58,7 @@ public class PipelineRegister {
         this.instruction = null;
         this.aluResult   = 0;
         this.memResult   = 0;
+        this.forwardingDecision = null;
     }
 
     // ── Computed values ───────────────────────────────────────────────────
@@ -60,6 +68,16 @@ public class PipelineRegister {
 
     public int  getMemResult()           { return memResult; }
     public void setMemResult(int v)      { memResult = v;    }
+    
+    // ── Forwarding (Phase 2) ──────────────────────────────────────────────
+    
+    public ForwardingDecision getForwardingDecision() { 
+        return forwardingDecision; 
+    }
+    
+    public void setForwardingDecision(ForwardingDecision fwd) { 
+        this.forwardingDecision = fwd; 
+    }
 
     // ── Display ───────────────────────────────────────────────────────────
 

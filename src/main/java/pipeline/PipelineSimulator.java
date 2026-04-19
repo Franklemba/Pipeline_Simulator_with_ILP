@@ -1,6 +1,8 @@
 package pipeline;
 
 import assembler.Assembler;
+import forwarding.ForwardingDecision;
+import forwarding.ForwardingUnit;
 import hardware.*;
 import hazards.HazardDetector;
 import isa.*;
@@ -21,12 +23,15 @@ import java.util.List;
  * Each stage is separated by pipeline registers (latches) that hold the state
  * between stages. Instructions flow through the pipeline one stage per clock cycle.
  * 
- * HAZARD HANDLING (Phase 1):
- * ==========================
+ * HAZARD HANDLING:
+ * ===============
+ * Phase 1: Stalls only (no forwarding)
+ * Phase 2: Data forwarding + enhanced hazard detection
+ * 
  * 1. DATA HAZARDS (RAW - Read After Write):
- *    - Detected when an instruction needs a register that's still being computed
- *    - Solution: STALL the pipeline (insert bubbles) until data is ready
- *    - No forwarding in Phase 1 (conservative approach)
+ *    Phase 1: STALL until data is ready in register file
+ *    Phase 2: FORWARD data from later stages (reduces stalls)
+ *    Exception: Load-use hazards still require 1-cycle stall
  * 
  * 2. CONTROL HAZARDS (Branches/Jumps):
  *    - Branch prediction: Assume NOT TAKEN (optimistic)
@@ -48,17 +53,25 @@ import java.util.List;
  * - CPI (Cycles Per Instruction): Total cycles / Instructions completed
  * - IPC (Instructions Per Cycle): Instructions completed / Total cycles
  * - Stall counts: Data hazards vs Control hazards
+ * - Forwarding events: Number of times forwarding avoided a stall (Phase 2)
  */
 public class PipelineSimulator {
 
     // ── Configuration ─────────────────────────────────────────────────────
     private static final int MAX_CYCLES = 500;
+    
+    /** Enable/disable data forwarding (Phase 2 feature) */
+    private boolean forwardingEnabled = false;
+    
+    /** Branch predictor (Phase 2 feature) */
+    private prediction.BranchPredictor branchPredictor = null;
 
     // ── Hardware ──────────────────────────────────────────────────────────
     private final RegisterFile  rf;
     private final DataMemory    dmem;
     private final ALU           alu;
     private final HazardDetector hazardDetector;
+    private final ForwardingUnit forwardingUnit;  // Phase 2
 
     // ── Pipeline stage latches ────────────────────────────────────────────
     // Each latch represents the state of one stage at the START of a cycle.
@@ -85,6 +98,7 @@ public class PipelineSimulator {
         this.dmem           = new DataMemory();
         this.alu            = new ALU();
         this.hazardDetector = new HazardDetector();
+        this.forwardingUnit = new ForwardingUnit();
     }
 
     // ── Public API ────────────────────────────────────────────────────────
@@ -93,6 +107,24 @@ public class PipelineSimulator {
     public DataMemory    getDataMemory()   { return dmem;  }
     public Statistics    getStats()        { return stats; }
     public void          setVerbose(boolean v) { verbose = v; }
+    
+    /** Enable or disable data forwarding (Phase 2) */
+    public void setForwardingEnabled(boolean enabled) {
+        this.forwardingEnabled = enabled;
+    }
+    
+    public boolean isForwardingEnabled() {
+        return forwardingEnabled;
+    }
+    
+    /** Set the branch predictor to use (Phase 2) */
+    public void setBranchPredictor(prediction.BranchPredictor predictor) {
+        this.branchPredictor = predictor;
+    }
+    
+    public prediction.BranchPredictor getBranchPredictor() {
+        return branchPredictor;
+    }
 
     /** Load a compiled program into the simulator. */
     public void load(List<Instruction> instructions) {
@@ -142,16 +174,24 @@ public class PipelineSimulator {
      * =============
      * 1. WB:  Complete the instruction, write results to register file
      * 2. MEM: Access data memory (LOAD/STORE), promote to WB
-     * 3. EX:  Execute ALU operation, promote to MEM
-     * 4. HAZARD CHECK: Detect data dependencies before advancing ID/IF
-     * 5. ID:  Decode instruction, evaluate branches, handle control hazards
-     * 6. IF:  Fetch next instruction (or stall/flush based on hazards)
+     * 3. EX:  Execute ALU operation (with forwarding if enabled), promote to MEM
+     * 4. FORWARDING CHECK: Detect if forwarding can resolve hazards (Phase 2)
+     * 5. HAZARD CHECK: Detect data dependencies before advancing ID/IF
+     * 6. ID:  Decode instruction, evaluate branches, handle control hazards
+     * 7. IF:  Fetch next instruction (or stall/flush based on hazards)
      * 
      * HAZARD RESPONSES:
      * ================
+     * Phase 1 (no forwarding):
      * - RAW Data Hazard: Freeze IF and ID, inject bubble into EX
-     * - Branch Taken:    Flush IF and ID, redirect PC to branch target
-     * - Normal:          All stages advance, fetch next instruction
+     * 
+     * Phase 2 (with forwarding):
+     * - RAW Data Hazard + Forwarding Available: Forward data, no stall
+     * - Load-Use Hazard: Stall 1 cycle (forwarding can't help)
+     * 
+     * Both phases:
+     * - Branch Taken: Flush IF and ID, redirect PC to branch target
+     * - Normal: All stages advance, fetch next instruction
      */
     private void tick() {
 
@@ -175,32 +215,71 @@ public class PipelineSimulator {
 
         // ── EX ────────────────────────────────────────────────────────────
         Instruction exInst = stageEX.getInstruction();
-        if (exInst != null && !exInst.isNop()) {
-            doExecute(exInst, stageEX);
+        
+        // Phase 2: Detect forwarding opportunities for the NEXT instruction
+        // (the one currently in ID that will enter EX next cycle)
+        Instruction idInst = stageID.getInstruction();
+        ForwardingDecision fwdDecision = ForwardingDecision.noForwarding();
+        
+        if (forwardingEnabled && idInst != null && !idInst.isNop()) {
+            fwdDecision = forwardingUnit.detectForwarding(
+                idInst,      // Consumer (in ID, about to enter EX)
+                exInst,      // Producer (in EX, result available next cycle)
+                memInst,     // Producer (in MEM)
+                wbInst       // Producer (in WB)
+            );
         }
+        
+        // Execute current EX instruction (doesn't use forwarding - it already has its data)
+        if (exInst != null && !exInst.isNop()) {
+            // Note: This instruction got its forwarding decision in the PREVIOUS cycle
+            // For simplicity, we'll execute without forwarding here
+            // The forwarding actually happens when ID→EX promotion occurs
+            doExecute(exInst, stageEX, ForwardingDecision.noForwarding());
+        }
+        
         // Promote EX → MEM
         stageMEM.setInstruction(exInst);
         stageMEM.setAluResult(stageEX.getAluResult());
         stageMEM.setMemResult(0);
 
         // ── Hazard detection (before ID and IF advance) ───────────────────
-        Instruction idInst  = stageID.getInstruction();
-        boolean     rawStall = hazardDetector.detectRAW(idInst,
-                                                        exInst,
-                                                        stageMEM.getInstruction());
+        boolean rawHazard = hazardDetector.detectRAW(idInst, exInst, memInst);
+        boolean needsStall = false;
+        
+        if (forwardingEnabled) {
+            // Phase 2: Check if forwarding can resolve the hazard
+            needsStall = hazardDetector.needsStallWithForwarding(
+                idInst, 
+                exInst, 
+                rawHazard || fwdDecision.needsForwarding()
+            );
+        } else {
+            // Phase 1: Any RAW hazard requires a stall
+            needsStall = rawHazard;
+        }
 
         // ── ID ────────────────────────────────────────────────────────────
         boolean branchTaken  = false;
+        boolean branchPredicted = false;
         int     ctrlPenalty  = 0;
 
-        if (!rawStall && idInst != null && !idInst.isNop()) {
+        if (!needsStall && idInst != null && !idInst.isNop()) {
+            // For branches, get prediction first
+            if (idInst.opType() == OpType.BRANCH) {
+                branchPredicted = predictBranch(idInst);
+            }
+            
+            // Evaluate the actual outcome
             branchTaken = doDecode(idInst);
-            ctrlPenalty = hazardDetector.controlPenalty(idInst, branchTaken);
+            
+            // Calculate penalty based on prediction accuracy
+            ctrlPenalty = hazardDetector.controlPenalty(idInst, branchTaken, branchPredicted);
         }
 
         // ── Apply stall or flush, then advance IF and ID ──────────────────
 
-        if (rawStall) {
+        if (needsStall) {
             // ── DATA STALL ────────────────────────────────────────────────
             // Freeze IF and ID; inject a bubble into EX.
             stageEX.insertBubble();
@@ -220,8 +299,9 @@ public class PipelineSimulator {
 
         } else {
             // ── NORMAL ADVANCE ────────────────────────────────────────────
-            // Promote ID → EX, IF → ID, fetch next instruction into IF.
+            // Promote ID → EX (with forwarding decision), IF → ID, fetch next instruction into IF.
             stageEX.setInstruction(idInst);
+            stageEX.setForwardingDecision(fwdDecision);  // Store for next cycle's EX stage
             stageID.setInstruction(stageIF.getInstruction());
             fetchNext();
         }
@@ -247,6 +327,8 @@ public class PipelineSimulator {
      * - Register values are read in this stage
      * - Early resolution = fewer wasted cycles
      * 
+     * Phase 2: Now uses branch predictor if available.
+     * 
      * @param inst The instruction being decoded
      * @return true if a branch/jump was taken (control hazard occurred)
      */
@@ -255,8 +337,15 @@ public class PipelineSimulator {
             case BRANCH: {
                 int a = rf.read(inst.rs1);
                 int b = rf.read(inst.rs2);
-                boolean taken = alu.execute(inst.opCode, a, b) == 1;
-                return taken;
+                boolean actuallyTaken = alu.execute(inst.opCode, a, b) == 1;
+                
+                // Update branch predictor with actual outcome (if predictor is set)
+                if (branchPredictor != null) {
+                    boolean isBackward = inst.imm < inst.pc;  // Target before current PC = backward branch
+                    branchPredictor.update(inst.pc, actuallyTaken);
+                }
+                
+                return actuallyTaken;
             }
             case JUMP:
                 return true;   // always taken
@@ -264,37 +353,110 @@ public class PipelineSimulator {
                 return false;
         }
     }
+    
+    /**
+     * Predicts whether a branch will be taken (Phase 2).
+     * 
+     * @param inst The branch instruction
+     * @return true if predicting TAKEN, false if predicting NOT TAKEN
+     */
+    private boolean predictBranch(Instruction inst) {
+        if (branchPredictor == null) {
+            // Phase 1 behavior: assume NOT TAKEN
+            return false;
+        }
+        
+        // Phase 2: Use branch predictor
+        boolean isBackward = inst.imm < inst.pc;  // Target before current PC = backward branch
+        return branchPredictor.predict(inst.pc, isBackward);
+    }
 
     /**
      * EX (Execute): Perform ALU computation and store result in the EX latch.
+     * 
+     * Phase 2: Now supports data forwarding from later pipeline stages.
      * 
      * The ALU handles:
      * - Arithmetic operations (ADD, SUB, MUL, DIV)
      * - Logical operations (AND, OR, XOR)
      * - Effective address calculation for LOAD/STORE (base + offset)
      * 
+     * Forwarding: If enabled, operand values may come from:
+     * - EX/MEM latch (most recent ALU result)
+     * - MEM/WB latch (memory or ALU result)
+     * - Register file (normal path)
+     * 
      * Results are stored in the pipeline register for the MEM stage to use.
      */
-    private void doExecute(Instruction inst, PipelineRegister exLatch) {
+    private void doExecute(Instruction inst, PipelineRegister exLatch, ForwardingDecision fwd) {
         int a = 0, b = 0;
+        
         switch (inst.opCode.type) {
             case ARITHMETIC:
             case LOGICAL:
-                a = rf.read(inst.rs1);
-                b = rf.read(inst.rs2);
+                a = getOperandValue(inst.rs1, fwd.rs1Source);
+                b = getOperandValue(inst.rs2, fwd.rs2Source);
                 break;
             case LOAD:
-                a = rf.read(inst.rs1);
+                a = getOperandValue(inst.rs1, fwd.rs1Source);
                 b = inst.imm;
                 break;
             case STORE:
-                a = rf.read(inst.rs2);   // base register
+                a = getOperandValue(inst.rs2, fwd.rs2Source);  // base register
                 b = inst.imm;
                 break;
             default:
                 break;
         }
         exLatch.setAluResult(alu.execute(inst.opCode, a, b));
+    }
+    
+    /**
+     * Gets an operand value, either from forwarding or from the register file.
+     * 
+     * Phase 2: Implements the forwarding multiplexer logic.
+     * 
+     * @param register Register name (e.g., "R1")
+     * @param fwdSource Where to get the value from
+     * @return The operand value
+     */
+    private int getOperandValue(String register, forwarding.ForwardingSource fwdSource) {
+        if (!forwardingEnabled || fwdSource == forwarding.ForwardingSource.NONE) {
+            // No forwarding - read from register file
+            return rf.read(register);
+        }
+        
+        // Forward from appropriate pipeline stage
+        switch (fwdSource) {
+            case FROM_EX:
+                // Forward from EX/MEM latch (ALU result from previous instruction)
+                stats.recordForwarding();
+                return stageMEM.getAluResult();
+                
+            case FROM_MEM:
+                // Forward from MEM/WB latch
+                stats.recordForwarding();
+                // If it was a LOAD, use memory result; otherwise use ALU result
+                Instruction memInst = stageWB.getInstruction();
+                if (memInst != null && memInst.opType() == OpType.LOAD) {
+                    return stageWB.getMemResult();
+                } else {
+                    return stageWB.getAluResult();
+                }
+                
+            case FROM_WB:
+                // Forward from WB stage (rare - could also read from register file)
+                stats.recordForwarding();
+                Instruction wbInst = stageWB.getInstruction();
+                if (wbInst != null && wbInst.opType() == OpType.LOAD) {
+                    return stageWB.getMemResult();
+                } else {
+                    return stageWB.getAluResult();
+                }
+                
+            default:
+                return rf.read(register);
+        }
     }
 
     /**
