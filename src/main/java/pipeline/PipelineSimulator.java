@@ -75,21 +75,21 @@ public class PipelineSimulator {
 
     // ── Pipeline stage latches ────────────────────────────────────────────
     // Each latch represents the state of one stage at the START of a cycle.
-    private final PipelineRegister stageIF  = new PipelineRegister();
-    private final PipelineRegister stageID  = new PipelineRegister();
-    private final PipelineRegister stageEX  = new PipelineRegister();
-    private final PipelineRegister stageMEM = new PipelineRegister();
-    private final PipelineRegister stageWB  = new PipelineRegister();
+    protected final PipelineRegister stageIF  = new PipelineRegister();
+    protected final PipelineRegister stageID  = new PipelineRegister();
+    protected final PipelineRegister stageEX  = new PipelineRegister();
+    protected final PipelineRegister stageMEM = new PipelineRegister();
+    protected final PipelineRegister stageWB  = new PipelineRegister();
 
     // ── Program state ─────────────────────────────────────────────────────
-    private List<Instruction> program;
-    private int               pc;        // next instruction to fetch
+    protected List<Instruction> program;
+    protected int               pc;        // next instruction to fetch
 
     // ── Statistics ────────────────────────────────────────────────────────
     private final Statistics stats = new Statistics();
 
     // ── Display toggle ────────────────────────────────────────────────────
-    private boolean verbose = true;
+    protected boolean verbose = true;
 
     // ── Constructor ───────────────────────────────────────────────────────
 
@@ -193,7 +193,7 @@ public class PipelineSimulator {
      * - Branch Taken: Flush IF and ID, redirect PC to branch target
      * - Normal: All stages advance, fetch next instruction
      */
-    private void tick() {
+    protected void tick() {
 
         // ── WB ────────────────────────────────────────────────────────────
         // Read results from stageWB's own latch (set when MEM→WB was promoted).
@@ -509,7 +509,7 @@ public class PipelineSimulator {
 
     // ── Drain check ───────────────────────────────────────────────────────
 
-    private boolean pipelineEmpty() {
+    protected boolean pipelineEmpty() {
         return stageIF .isEmpty()
             && stageID .isEmpty()
             && stageEX .isEmpty()
@@ -522,7 +522,7 @@ public class PipelineSimulator {
     private static final String[] STAGE_NAMES = {"IF", "ID", "EX", "MEM", "WB"};
     private static final int      COL_W       = 18;   // column width — change this to resize table
 
-    private String[] snapshot() {
+    protected String[] snapshot() {
         return new String[]{
             stageIF .display(),
             stageID .display(),
@@ -546,7 +546,7 @@ public class PipelineSimulator {
         System.out.println(sep);
     }
 
-    private void printCycleRow(int cycle, String[] stages) {
+    protected void printCycleRow(int cycle, String[] stages) {
         StringBuilder row = new StringBuilder(String.format("| %-6d |", cycle));
         for (String s : stages) {
             // Truncate if instruction label is longer than column width

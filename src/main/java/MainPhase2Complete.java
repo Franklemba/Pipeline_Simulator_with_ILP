@@ -2,6 +2,7 @@ import assembler.Assembler;
 import analysis.ILPAnalyzer;
 import analysis.ILPReport;
 import pipeline.PipelineSimulator;
+import pipeline.SuperscalarSimulator;
 import prediction.*;
 import stats.Statistics;
 
@@ -109,6 +110,12 @@ public class MainPhase2Complete {
         System.out.println("PART 4: LOOP UNROLLING");
         System.out.println("═".repeat(110));
         demonstrateLoopUnrolling();
+        
+        // Part 5: Superscalar Execution
+        System.out.println("\n" + "═".repeat(110));
+        System.out.println("PART 5: SUPERSCALAR EXECUTION");
+        System.out.println("═".repeat(110));
+        demonstrateSuperscalar();
         
         // Summary
         printSummary();
@@ -288,6 +295,116 @@ public class MainPhase2Complete {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    //  PART 5: SUPERSCALAR EXECUTION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    static void demonstrateSuperscalar() {
+        System.out.println("\nComparing scalar (1-way) vs superscalar (2-way) execution:\n");
+        
+        // Test with ILP-friendly workload (has parallelism to exploit)
+        System.out.println("Testing with ILP-FRIENDLY workload:");
+        System.out.println("─".repeat(90));
+        
+        // Scalar execution
+        Assembler asm1 = new Assembler();
+        Assembler.Program prog1 = asm1.assemble(WORKLOAD_ILP_FRIENDLY);
+        
+        PipelineSimulator scalarSim = new PipelineSimulator();
+        scalarSim.setForwardingEnabled(true);
+        scalarSim.setBranchPredictor(new TwoBitPredictor());
+        scalarSim.setVerbose(false);
+        scalarSim.load(prog1.instructions);
+        Statistics scalarStats = scalarSim.run();
+        
+        // Superscalar execution
+        Assembler asm2 = new Assembler();
+        Assembler.Program prog2 = asm2.assemble(WORKLOAD_ILP_FRIENDLY);
+        
+        SuperscalarSimulator superscalarSim = new SuperscalarSimulator();
+        superscalarSim.setVerbose(false);
+        superscalarSim.load(prog2.instructions);
+        Statistics superscalarStats = superscalarSim.run();
+        
+        // Display comparison
+        System.out.println("┌─────────────────────────────────────────────────────────────┐");
+        System.out.println("│              SCALAR vs SUPERSCALAR                          │");
+        System.out.println("├─────────────────────────────────────────────────────────────┤");
+        System.out.printf("│  Metric              │ Scalar   │ Superscalar │ Improvement │\n");
+        System.out.println("├─────────────────────────────────────────────────────────────┤");
+        System.out.printf("│  Total Cycles        │ %8d │ %11d │ -%2d cycles  │\n",
+            scalarStats.getTotalCycles(), superscalarStats.getTotalCycles(),
+            scalarStats.getTotalCycles() - superscalarStats.getTotalCycles());
+        System.out.printf("│  Instructions        │ %8d │ %11d │ same        │\n",
+            scalarStats.getInstructionsRetired(), superscalarStats.getInstructionsRetired());
+        System.out.printf("│  CPI                 │ %8.2f │ %11.2f │ %.2f%%       │\n",
+            scalarStats.cpi(), superscalarStats.cpi(),
+            ((scalarStats.cpi() - superscalarStats.cpi()) / scalarStats.cpi()) * 100);
+        System.out.printf("│  IPC                 │ %8.2f │ %11.2f │ +%.2f%%      │\n",
+            scalarStats.throughput(), superscalarStats.throughput(),
+            ((superscalarStats.throughput() - scalarStats.throughput()) / scalarStats.throughput()) * 100);
+        System.out.printf("│  Speedup             │ %8s │ %11.2fx │             │\n",
+            "1.00x", (double)scalarStats.getTotalCycles() / superscalarStats.getTotalCycles());
+        System.out.println("├─────────────────────────────────────────────────────────────┤");
+        System.out.printf("│  Dual-Issue Rate     │ %8s │ %10.1f%% │             │\n",
+            "N/A", superscalarSim.getDualIssueRate());
+        System.out.printf("│  Avg Issue Rate      │ %8.2f │ %11.2f │             │\n",
+            1.0, superscalarSim.getAverageIssueRate());
+        System.out.println("└─────────────────────────────────────────────────────────────┘");
+        
+        // Test with ILP-unfriendly workload (no parallelism)
+        System.out.println("\nTesting with ILP-UNFRIENDLY workload:");
+        System.out.println("─".repeat(90));
+        
+        // Scalar execution
+        Assembler asm3 = new Assembler();
+        Assembler.Program prog3 = asm3.assemble(WORKLOAD_ILP_UNFRIENDLY);
+        
+        PipelineSimulator scalarSim2 = new PipelineSimulator();
+        scalarSim2.setForwardingEnabled(true);
+        scalarSim2.setBranchPredictor(new TwoBitPredictor());
+        scalarSim2.setVerbose(false);
+        scalarSim2.load(prog3.instructions);
+        Statistics scalarStats2 = scalarSim2.run();
+        
+        // Superscalar execution
+        Assembler asm4 = new Assembler();
+        Assembler.Program prog4 = asm4.assemble(WORKLOAD_ILP_UNFRIENDLY);
+        
+        SuperscalarSimulator superscalarSim2 = new SuperscalarSimulator();
+        superscalarSim2.setVerbose(false);
+        superscalarSim2.load(prog4.instructions);
+        Statistics superscalarStats2 = superscalarSim2.run();
+        
+        // Display comparison
+        System.out.println("┌─────────────────────────────────────────────────────────────┐");
+        System.out.println("│              SCALAR vs SUPERSCALAR                          │");
+        System.out.println("├─────────────────────────────────────────────────────────────┤");
+        System.out.printf("│  Metric              │ Scalar   │ Superscalar │ Improvement │\n");
+        System.out.println("├─────────────────────────────────────────────────────────────┤");
+        System.out.printf("│  Total Cycles        │ %8d │ %11d │ -%2d cycles  │\n",
+            scalarStats2.getTotalCycles(), superscalarStats2.getTotalCycles(),
+            scalarStats2.getTotalCycles() - superscalarStats2.getTotalCycles());
+        System.out.printf("│  CPI                 │ %8.2f │ %11.2f │ %.2f%%       │\n",
+            scalarStats2.cpi(), superscalarStats2.cpi(),
+            ((scalarStats2.cpi() - superscalarStats2.cpi()) / scalarStats2.cpi()) * 100);
+        System.out.printf("│  Speedup             │ %8s │ %11.2fx │             │\n",
+            "1.00x", (double)scalarStats2.getTotalCycles() / superscalarStats2.getTotalCycles());
+        System.out.println("├─────────────────────────────────────────────────────────────┤");
+        System.out.printf("│  Dual-Issue Rate     │ %8s │ %10.1f%% │             │\n",
+            "N/A", superscalarSim2.getDualIssueRate());
+        System.out.printf("│  Avg Issue Rate      │ %8.2f │ %11.2f │             │\n",
+            1.0, superscalarSim2.getAverageIssueRate());
+        System.out.println("└─────────────────────────────────────────────────────────────┘");
+        
+        System.out.println("\n💡 Key Insights:");
+        System.out.println("   • Superscalar exploits ILP - works best with independent instructions");
+        System.out.println("   • ILP-friendly code: High dual-issue rate, significant speedup");
+        System.out.println("   • ILP-unfriendly code: Low dual-issue rate, minimal speedup");
+        System.out.println("   • Dependencies limit superscalar effectiveness");
+        System.out.println("   • Real processors: 4-way or 8-way superscalar for even more parallelism");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     //  HELPER METHODS
     // ═══════════════════════════════════════════════════════════════════════
 
@@ -344,15 +461,23 @@ public class MainPhase2Complete {
         System.out.println("      - Exposes more parallelism");
         System.out.println("      - Improves pipeline utilization");
         System.out.println();
+        System.out.println("   5. ✓ Superscalar Execution (2-way)");
+        System.out.println("      - Dual-issue capability");
+        System.out.println("      - Dependency checking between same-cycle instructions");
+        System.out.println("      - Resource conflict detection");
+        System.out.println("      - Exploits ILP for better performance");
+        System.out.println();
         System.out.println("📊 PERFORMANCE IMPROVEMENTS:");
         System.out.println("   • Data Forwarding: Up to 80% reduction in data stalls");
         System.out.println("   • Branch Prediction: Up to 95% prediction accuracy");
         System.out.println("   • Loop Unrolling: 20-30% reduction in execution time");
+        System.out.println("   • Superscalar: 1.3-1.5x speedup on ILP-friendly code");
         System.out.println();
         System.out.println("🎓 EDUCATIONAL VALUE:");
         System.out.println("   • Demonstrates real CPU optimization techniques");
         System.out.println("   • Shows trade-offs between hardware complexity and performance");
         System.out.println("   • Provides quantitative performance analysis");
+        System.out.println("   • Illustrates importance of ILP in modern processors");
         System.out.println();
         System.out.println("═".repeat(110));
     }
