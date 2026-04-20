@@ -37,6 +37,7 @@ java -cp target/classes MainPhase2Complete
 - **Branch Prediction:** 100% accuracy (2-bit predictor)
 - **ILP Analysis:** Parallelism identification
 - **Loop Unrolling:** 11% CPI improvement
+- **Superscalar Execution:** 2-way dual-issue (45% dual-issue rate)
 
 ---
 
@@ -47,6 +48,7 @@ java -cp target/classes MainPhase2Complete
 | Data Forwarding | **1.80x speedup** |
 | Branch Prediction | **100% accuracy** |
 | Loop Unrolling | **11% CPI reduction** |
+| Superscalar (ILP-friendly) | **45% dual-issue rate** |
 
 ---
 
@@ -112,10 +114,10 @@ java -jar target/pipeline-simulator-1.0.0.jar
 ## 📈 Progress
 
 - Phase 1: ✅ 100%
-- Phase 2: ✅ 100% (5 of 6 tasks)
+- Phase 2: ✅ 100% (all 6 tasks complete!)
 - Phase 3: ⚠️ 40%
 
-**Overall: ~80% complete**
+**Overall: ~90% complete**
 
 ---
 
@@ -128,6 +130,7 @@ Demonstrates:
 - Branch prediction strategies
 - ILP analysis
 - Compiler optimizations
+- Superscalar execution
 
 Perfect for learning modern CPU design!
 
