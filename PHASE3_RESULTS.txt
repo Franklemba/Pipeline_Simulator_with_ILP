@@ -1,0 +1,183 @@
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║  PHASE 3: PERFORMANCE EVALUATION AND ANALYSIS                                                                        ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+SECTION 1: COMPREHENSIVE PERFORMANCE COMPARISON
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+Complete Performance Metrics Across All Configurations and Workloads
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Workload        │ Configuration                            │  Cycles │  Instrs │    CPI │    IPC │ Stalls │    Fwd
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Arithmetic      │ Basic Pipeline                           │      18 │       5 │   3.60 │   0.28 │      8 │      0
+Arithmetic      │ Pipeline + Forwarding                    │      10 │       5 │   2.00 │   0.50 │      0 │      0
+Arithmetic      │ Pipeline + Forwarding + Branch Prediction │      10 │       5 │   2.00 │   0.50 │      0 │      0
+Arithmetic      │ Superscalar (2-way)                      │      10 │       5 │   2.00 │   0.50 │      0 │      0
+Memory          │ Basic Pipeline                           │      19 │       6 │   3.17 │   0.32 │      8 │      0
+Memory          │ Pipeline + Forwarding                    │      13 │       6 │   2.17 │   0.46 │      2 │      0
+Memory          │ Pipeline + Forwarding + Branch Prediction │      13 │       6 │   2.17 │   0.46 │      2 │      0
+Memory          │ Superscalar (2-way)                      │      13 │       6 │   2.17 │   0.46 │      2 │      0
+Branch          │ Basic Pipeline                           │      13 │       4 │   3.25 │   0.31 │      3 │      0
+Branch          │ Pipeline + Forwarding                    │      11 │       4 │   2.75 │   0.36 │      1 │      0
+Branch          │ Pipeline + Forwarding + Branch Prediction │      11 │       4 │   2.75 │   0.36 │      1 │      0
+Branch          │ Superscalar (2-way)                      │      11 │       4 │   2.75 │   0.36 │      1 │      0
+Loop            │ Basic Pipeline                           │      36 │      15 │   2.40 │   0.42 │     13 │      0
+Loop            │ Pipeline + Forwarding                    │      31 │      18 │   1.72 │   0.58 │      4 │      0
+Loop            │ Pipeline + Forwarding + Branch Prediction │      11 │       6 │   1.83 │   0.55 │      0 │      0
+Loop            │ Superscalar (2-way)                      │      11 │       6 │   1.83 │   0.55 │      0 │      0
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+SECTION 2: WORKLOAD-SPECIFIC ANALYSIS
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+ARITHMETIC WORKLOAD:
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Configuration                            │  Cycles │    CPI │ Data Stalls │ Ctrl Stalls
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Basic Pipeline                           │      18 │   3.60 │          8 │          0 │ 
+Pipeline + Forwarding                    │      10 │   2.00 │          0 │          0 │ Speedup: 1.80x
+Pipeline + Forwarding + Branch Prediction │      10 │   2.00 │          0 │          0 │ Speedup: 1.80x
+Superscalar (2-way)                      │      10 │   2.00 │          0 │          0 │ Speedup: 1.80x
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+MEMORY WORKLOAD:
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Configuration                            │  Cycles │    CPI │ Data Stalls │ Ctrl Stalls
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Basic Pipeline                           │      19 │   3.17 │          8 │          0 │ 
+Pipeline + Forwarding                    │      13 │   2.17 │          2 │          0 │ Speedup: 1.46x
+Pipeline + Forwarding + Branch Prediction │      13 │   2.17 │          2 │          0 │ Speedup: 1.46x
+Superscalar (2-way)                      │      13 │   2.17 │          2 │          0 │ Speedup: 1.46x
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+BRANCH WORKLOAD:
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Configuration                            │  Cycles │    CPI │ Data Stalls │ Ctrl Stalls
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Basic Pipeline                           │      13 │   3.25 │          2 │          1 │ 
+Pipeline + Forwarding                    │      11 │   2.75 │          0 │          1 │ Speedup: 1.18x
+Pipeline + Forwarding + Branch Prediction │      11 │   2.75 │          0 │          1 │ Speedup: 1.18x
+Superscalar (2-way)                      │      11 │   2.75 │          0 │          1 │ Speedup: 1.18x
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+LOOP WORKLOAD:
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Configuration                            │  Cycles │    CPI │ Data Stalls │ Ctrl Stalls
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Basic Pipeline                           │      36 │   2.40 │         10 │          3 │ 
+Pipeline + Forwarding                    │      31 │   1.72 │          0 │          4 │ Speedup: 1.16x
+Pipeline + Forwarding + Branch Prediction │      11 │   1.83 │          0 │          0 │ Speedup: 3.27x
+Superscalar (2-way)                      │      11 │   1.83 │          0 │          0 │ Speedup: 3.27x
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+SECTION 3: OPTIMIZATION IMPACT ANALYSIS
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+Impact of Each Optimization (Average Across All Workloads)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Configuration                            │ Avg Cycles │  Avg CPI │ Avg Stalls │    Avg Fwd
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Basic Pipeline                           │       21.5 │     3.10 │        8.0 │        0.0
+Pipeline + Forwarding                    │       16.3 │     2.16 │        1.8 │        0.0
+Pipeline + Forwarding + Branch Prediction │       11.3 │     2.19 │        0.8 │        0.0
+Superscalar (2-way)                      │       11.3 │     2.19 │        0.8 │        0.0
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+SECTION 4: SPEEDUP ANALYSIS
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+Speedup Relative to Basic Pipeline
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Workload        │ Configuration                            │    Speedup │ CPI Improv
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Arithmetic      │ Basic Pipeline                           │      1.00x │       0.0%
+Arithmetic      │ Pipeline + Forwarding                    │      1.80x │      44.4%
+Arithmetic      │ Pipeline + Forwarding + Branch Prediction │      1.80x │      44.4%
+Arithmetic      │ Superscalar (2-way)                      │      1.80x │      44.4%
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Memory          │ Basic Pipeline                           │      1.00x │       0.0%
+Memory          │ Pipeline + Forwarding                    │      1.46x │      31.6%
+Memory          │ Pipeline + Forwarding + Branch Prediction │      1.46x │      31.6%
+Memory          │ Superscalar (2-way)                      │      1.46x │      31.6%
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Branch          │ Basic Pipeline                           │      1.00x │       0.0%
+Branch          │ Pipeline + Forwarding                    │      1.18x │      15.4%
+Branch          │ Pipeline + Forwarding + Branch Prediction │      1.18x │      15.4%
+Branch          │ Superscalar (2-way)                      │      1.18x │      15.4%
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Loop            │ Basic Pipeline                           │      1.00x │       0.0%
+Loop            │ Pipeline + Forwarding                    │      1.16x │      28.2%
+Loop            │ Pipeline + Forwarding + Branch Prediction │      3.27x │      23.6%
+Loop            │ Superscalar (2-way)                      │      3.27x │      23.6%
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+SECTION 5: STALL ANALYSIS
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+Stall Reduction Analysis
+
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Workload        │ Configuration                            │ Total Stalls │  Data Stalls │  Ctrl Stalls
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Arithmetic      │ Basic Pipeline                           │          8 │            8 │            0
+Arithmetic      │ Pipeline + Forwarding                    │          0 │            0 │            0 (-100%)
+Arithmetic      │ Pipeline + Forwarding + Branch Prediction │          0 │            0 │            0 (-100%)
+Arithmetic      │ Superscalar (2-way)                      │          0 │            0 │            0 (-100%)
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Memory          │ Basic Pipeline                           │          8 │            8 │            0
+Memory          │ Pipeline + Forwarding                    │          2 │            2 │            0 (-75%)
+Memory          │ Pipeline + Forwarding + Branch Prediction │          2 │            2 │            0 (-75%)
+Memory          │ Superscalar (2-way)                      │          2 │            2 │            0 (-75%)
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Branch          │ Basic Pipeline                           │          3 │            2 │            1
+Branch          │ Pipeline + Forwarding                    │          1 │            0 │            1 (-67%)
+Branch          │ Pipeline + Forwarding + Branch Prediction │          1 │            0 │            1 (-67%)
+Branch          │ Superscalar (2-way)                      │          1 │            0 │            1 (-67%)
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Loop            │ Basic Pipeline                           │         13 │           10 │            3
+Loop            │ Pipeline + Forwarding                    │          4 │            0 │            4 (-69%)
+Loop            │ Pipeline + Forwarding + Branch Prediction │          0 │            0 │            0 (-100%)
+Loop            │ Superscalar (2-way)                      │          0 │            0 │            0 (-100%)
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+SECTION 6: KEY FINDINGS AND INSIGHTS
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+📊 KEY FINDINGS:
+
+1. DATA FORWARDING IMPACT:
+   • Average speedup: 1.31x
+   • Stall reduction: 88%
+   • CPI improvement: 30%
+
+2. BRANCH PREDICTION IMPACT:
+   • Additional speedup over forwarding: 1.45x
+   • Control stall reduction: 100%
+
+3. SUPERSCALAR IMPACT:
+   • Overall speedup vs basic: 1.91x
+   • CPI improvement: 30%
+
+4. BEST CONFIGURATION:
+   • Superscalar with forwarding and branch prediction
+   • Achieves 1.91x speedup over basic pipeline
+   • Average CPI: 2.19 (vs 3.10 basic)
+
+5. WORKLOAD CHARACTERISTICS:
+   • Loop: CPI=2.40, Data Stalls=10, Control Stalls=3
+   • Memory: CPI=3.17, Data Stalls=8, Control Stalls=0
+   • Branch: CPI=3.25, Data Stalls=2, Control Stalls=1
+   • Arithmetic: CPI=3.60, Data Stalls=8, Control Stalls=0
+
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+PHASE 3 EVALUATION COMPLETE
+════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════

@@ -216,7 +216,17 @@ public class PipelineSimulator {
         // ── EX ────────────────────────────────────────────────────────────
         Instruction exInst = stageEX.getInstruction();
         
-        // Phase 2: Detect forwarding opportunities for the NEXT instruction
+        // Phase 2: Execute current EX instruction with its forwarding decision
+        // (the forwarding decision was computed in the previous cycle when this instruction was in ID)
+        if (exInst != null && !exInst.isNop()) {
+            ForwardingDecision exFwdDecision = stageEX.getForwardingDecision();
+            if (exFwdDecision == null) {
+                exFwdDecision = ForwardingDecision.noForwarding();
+            }
+            doExecute(exInst, stageEX, exFwdDecision);
+        }
+        
+        // Detect forwarding opportunities for the NEXT instruction
         // (the one currently in ID that will enter EX next cycle)
         Instruction idInst = stageID.getInstruction();
         ForwardingDecision fwdDecision = ForwardingDecision.noForwarding();
@@ -228,14 +238,6 @@ public class PipelineSimulator {
                 memInst,     // Producer (in MEM)
                 wbInst       // Producer (in WB)
             );
-        }
-        
-        // Execute current EX instruction (doesn't use forwarding - it already has its data)
-        if (exInst != null && !exInst.isNop()) {
-            // Note: This instruction got its forwarding decision in the PREVIOUS cycle
-            // For simplicity, we'll execute without forwarding here
-            // The forwarding actually happens when ID→EX promotion occurs
-            doExecute(exInst, stageEX, ForwardingDecision.noForwarding());
         }
         
         // Promote EX → MEM
@@ -438,7 +440,7 @@ public class PipelineSimulator {
                 stats.recordForwarding();
                 // If it was a LOAD, use memory result; otherwise use ALU result
                 Instruction memInst = stageWB.getInstruction();
-                if (memInst != null && memInst.opType() == OpType.LOAD) {
+                if (memInst != null && !memInst.isNop() && memInst.opType() == OpType.LOAD) {
                     return stageWB.getMemResult();
                 } else {
                     return stageWB.getAluResult();
@@ -448,7 +450,7 @@ public class PipelineSimulator {
                 // Forward from WB stage (rare - could also read from register file)
                 stats.recordForwarding();
                 Instruction wbInst = stageWB.getInstruction();
-                if (wbInst != null && wbInst.opType() == OpType.LOAD) {
+                if (wbInst != null && !wbInst.isNop() && wbInst.opType() == OpType.LOAD) {
                     return stageWB.getMemResult();
                 } else {
                     return stageWB.getAluResult();
