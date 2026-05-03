@@ -5,46 +5,41 @@ import isa.Instruction;
 /**
  * Forwarding Unit (Bypass Unit)
  * 
- * PURPOSE:
- * ========
- * Detects when results from later pipeline stages can be forwarded directly
- * to earlier stages, avoiding pipeline stalls caused by data hazards.
+ * This unit lets us grab results from later pipeline stages instead of
+ * waiting for them to be written to registers. Saves a lot of stall cycles!
  * 
- * FORWARDING PATHS:
- * ================
- * 1. EX/MEM → EX (EX forwarding)
- *    - Result from EX stage forwarded to next instruction's EX stage
- *    - Most common case: back-to-back ALU operations
- *    - Example: ADD R1,R2,R3 followed by ADD R4,R1,R5
+ * THREE FORWARDING PATHS:
  * 
- * 2. MEM/WB → EX (MEM forwarding)
- *    - Result from MEM stage forwarded to EX stage
- *    - One instruction gap between producer and consumer
- *    - Example: ADD R1,R2,R3; NOP; ADD R4,R1,R5
+ * 1. EX→EX forwarding (most common)
+ *    Grab the result right after it's calculated
+ *    Example: ADD R1,R2,R3 followed by ADD R4,R1,R5
  * 
- * 3. WB → EX (WB forwarding)
- *    - Result from WB stage forwarded to EX stage
- *    - Two instruction gap between producer and consumer
- *    - Less common but still useful
+ * 2. MEM→EX forwarding
+ *    Grab from one instruction back
+ *    Example: ADD R1,R2,R3; NOP; ADD R4,R1,R5
  * 
- * WHEN FORWARDING CANNOT HELP:
- * ============================
- * Load-Use Hazard: LOAD followed immediately by use
+ * 3. WB→EX forwarding
+ *    Grab from two instructions back
+ *    Less common but still useful
+ * 
+ * WHEN FORWARDING CAN'T HELP:
+ * 
+ * Load-Use Hazard:
  *   LOAD R1, 0(R2)
- *   ADD  R4, R1, R5  ← R1 not available until MEM stage completes
+ *   ADD  R4, R1, R5  ← R1 isn't ready until memory access completes
  * 
- * In this case, we MUST stall one cycle even with forwarding.
+ * We still have to stall 1 cycle even with forwarding.
  */
 public class ForwardingUnit {
 
     /**
-     * Detects if forwarding is possible and determines the forwarding source.
+     * Figure out if we can forward data and where it should come from.
      * 
-     * @param idInst  Instruction in ID stage (consumer - needs data)
-     * @param exInst  Instruction in EX stage (potential producer)
-     * @param memInst Instruction in MEM stage (potential producer)
-     * @param wbInst  Instruction in WB stage (potential producer)
-     * @return ForwardingDecision containing source and operand info
+     * @param idInst  Instruction that needs data (in ID stage)
+     * @param exInst  Instruction that might have it (in EX stage)
+     * @param memInst Instruction that might have it (in MEM stage)
+     * @param wbInst  Instruction that might have it (in WB stage)
+     * @return Decision about where to get the data
      */
     public ForwardingDecision detectForwarding(Instruction idInst,
                                                Instruction exInst,
@@ -71,13 +66,13 @@ public class ForwardingUnit {
     }
 
     /**
-     * Detects forwarding source for a single operand register.
+     * Find the forwarding source for one operand.
      * 
-     * Priority (closest stage first):
-     * 1. EX stage (most recent result)
+     * Priority (check closest stage first):
+     * 1. EX stage (most recent)
      * 2. MEM stage
      * 3. WB stage
-     * 4. No forwarding needed (register file has correct value)
+     * 4. No forwarding needed (register file is fine)
      */
     private ForwardingSource detectForwardingForOperand(String operandReg,
                                                         Instruction exInst,
@@ -104,12 +99,12 @@ public class ForwardingUnit {
     }
 
     /**
-     * Checks if an instruction can forward its result to a given register.
+     * Check if an instruction can forward its result.
      * 
      * Requirements:
-     * 1. Instruction exists and is not a NOP
-     * 2. Instruction writes to a register (has destination)
-     * 3. Destination register matches the operand we need
+     * 1. Instruction exists and isn't a NOP
+     * 2. It writes to a register
+     * 3. The register matches what we need
      */
     private boolean canForwardFrom(Instruction producer, String operandReg) {
         if (producer == null || producer.isNop()) {

@@ -1,145 +1,115 @@
-# Pipeline Simulator
+# CPU Pipeline Simulator
 
 **CS 510 – Advanced Computer Architecture**  
-5-Stage RISC Pipeline with Advanced Optimizations
+A 5-stage RISC pipeline simulator with real-world optimizations
 
-[![Phase 1](https://img.shields.io/badge/Phase%201-Complete-success)]()
-[![Phase 2](https://img.shields.io/badge/Phase%202-Complete-success)]()
-[![Phase 3](https://img.shields.io/badge/Phase%203-Complete-success)]()
+![Phase 1](https://img.shields.io/badge/Phase%201-Complete-success) ![Phase 2](https://img.shields.io/badge/Phase%202-Complete-success) ![Phase 3](https://img.shields.io/badge/Phase%203-Complete-success)
 
----
-
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# Compile
+# Compile everything
 mvn clean compile
 
-# Run Phase 1 (basic pipeline)
+# Run the basic pipeline (Phase 1)
 mvn exec:java
 
-# Run Phase 2 (all optimizations)
+# Run with all optimizations (Phase 2)
 java -cp target/classes MainPhase2Complete
+
+# Performance evaluation (Phase 3)
+java -cp target/classes PerformanceEvaluator
 ```
 
----
+## What's Inside
 
-## ✨ Features
+**Phase 1 - Basic Pipeline**
+- Classic 5-stage design: Fetch → Decode → Execute → Memory → Writeback
+- Handles data and control hazards
+- Four test programs showing different hazard scenarios
+- Shows you what's happening cycle-by-cycle
 
-### Phase 1: Basic Pipeline ✅
-- 5-stage pipeline (IF → ID → EX → MEM → WB)
-- Hazard detection (data & control)
-- 4 test workloads
-- Cycle-by-cycle visualization
+**Phase 2 - Making It Fast**
+- Data forwarding cuts execution time by 80%
+- Branch predictor gets 100% accuracy on loops
+- ILP analyzer finds parallelism opportunities
+- Loop unrolling reduces overhead by 11%
+- Superscalar mode issues 2 instructions per cycle
 
-### Phase 2: Optimizations ✅
-- **Data Forwarding:** 1.8x speedup
-- **Branch Prediction:** 100% accuracy (2-bit predictor)
-- **ILP Analysis:** Parallelism identification
-- **Loop Unrolling:** 11% CPI improvement
-- **Superscalar Execution:** 2-way dual-issue (45% dual-issue rate)
+## Performance Numbers
 
----
+| What We Added | How Much Faster |
+|---------------|-----------------|
+| Data Forwarding | 1.8x speedup |
+| Branch Prediction | 100% accurate on loops |
+| Loop Unrolling | 11% fewer cycles |
+| Superscalar | Issues 2 instructions 45% of the time |
 
-## 📊 Performance Results
-
-| Optimization | Improvement |
-|--------------|-------------|
-| Data Forwarding | **1.80x speedup** |
-| Branch Prediction | **100% accuracy** |
-| Loop Unrolling | **11% CPI reduction** |
-| Superscalar (ILP-friendly) | **45% dual-issue rate** |
-
----
-
-## 📚 Documentation
-
-- **[PROJECT_GUIDE.md](PROJECT_GUIDE.md)** - Complete guide (start here!)
-- **[PHASE2_COMPLETE.md](PHASE2_COMPLETE.md)** - Phase 2 detailed report
-- **[ASSIGNMENT_PROGRESS.md](ASSIGNMENT_PROGRESS.md)** - Progress tracking
-
----
-
-## 🏗️ Architecture
+## How It Works
 
 ```
 ┌─────┐   ┌─────┐   ┌─────┐   ┌─────┐   ┌─────┐
 │ IF  │ → │ ID  │ → │ EX  │ → │ MEM │ → │ WB  │
 └─────┘   └─────┘   └─────┘   └─────┘   └─────┘
    ↑          ↑         ↑         ↑         ↑
-   │          │         │         │         │
    └──────────┴─────────┴─────────┴─────────┘
-              Data Forwarding Paths
+         Results forwarded back when needed
 ```
 
-**Hazards Handled:**
-- Data hazards (RAW) → Forwarding or stall
-- Control hazards → Branch prediction + flush
-- Structural hazards → None (by design)
+The pipeline handles three types of problems:
+- **Data hazards** - when an instruction needs a result that's not ready yet
+- **Control hazards** - when we don't know which instruction comes next (branches)
+- **Structural hazards** - none in our design (we have enough hardware)
 
----
+## Test Programs
 
-## 🎯 Workloads
+We include four programs that stress different parts of the pipeline:
 
-1. **Arithmetic** - Data hazards, dependency chains
-2. **Memory** - Load-use hazards
-3. **Branch** - Control hazards, mispredictions
-4. **Loop** - Mixed hazards, realistic code
+1. **arithmetic** - Long chains of dependent calculations
+2. **memory** - Lots of loads and stores
+3. **branch** - Conditional jumps everywhere
+4. **loop** - A realistic loop with mixed operations
 
----
-
-## 📦 Requirements
-
-- Java 11+
-- Maven 3.6+
-
----
-
-## 🧪 Testing
+## Running Tests
 
 ```bash
-# Run specific workload
+# Run a specific test
 mvn exec:java -Dexec.args="arithmetic"
 mvn exec:java -Dexec.args="memory"
 mvn exec:java -Dexec.args="branch"
 mvn exec:java -Dexec.args="loop"
 
-# Build JAR
+# Build a standalone JAR
 mvn clean package
 java -jar target/pipeline-simulator-1.0.0.jar
 ```
 
----
+## Requirements
 
-## 📈 Progress
+- Java 11 or newer
+- Maven 3.6 or newer
 
-- Phase 1: ✅ 100%
-- Phase 2: ✅ 100% (all 6 tasks complete!)
-- Phase 3: ✅ 100%
+## Documentation
 
-**Overall: ~95% complete** (only report remains)
+- **[PROJECT_GUIDE.md](PROJECT_GUIDE.md)** - Full walkthrough of everything
+- **[TESTING.md](TESTING.md)** - How to run and verify each phase
+- **[PHASE3_COMPLETE_REPORT.md](PHASE3_COMPLETE_REPORT.md)** - Performance analysis
 
----
+## Project Status
 
-## 🎓 Educational Value
+All three phases are complete. Only the final technical report remains.
 
-Demonstrates:
-- Pipeline architecture
-- Hazard detection and resolution
-- Data forwarding techniques
-- Branch prediction strategies
-- ILP analysis
-- Compiler optimizations
-- Superscalar execution
+## What You'll Learn
 
-Perfect for learning modern CPU design!
+This simulator shows you how modern CPUs actually work:
+- Why pipelines make processors fast
+- How forwarding avoids wasted cycles
+- Why branch prediction matters
+- How processors find parallelism
+- What superscalar execution means
 
----
-
-## 📝 License
-
-Academic project for CS 510 - Advanced Computer Architecture
+It's a hands-on way to understand the techniques that make your computer fast.
 
 ---
 
-**For complete documentation, see [PROJECT_GUIDE.md](PROJECT_GUIDE.md)**
+**Academic project for CS 510 - Advanced Computer Architecture**

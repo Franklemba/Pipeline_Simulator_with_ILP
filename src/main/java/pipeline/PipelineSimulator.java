@@ -11,49 +11,33 @@ import stats.Statistics;
 import java.util.List;
 
 /**
- * 5-Stage In-Order Pipeline Simulator
+ * 5-Stage Pipeline Simulator
  * 
- * ARCHITECTURE OVERVIEW:
- * =====================
- * This simulator models a classic RISC pipeline with five stages:
+ * This simulates a classic RISC processor pipeline with five stages:
+ * IF (fetch) → ID (decode) → EX (execute) → MEM (memory) → WB (writeback)
  * 
- *   IF (Instruction Fetch) → ID (Instruction Decode) → EX (Execute) → 
- *   MEM (Memory Access) → WB (Write Back)
+ * HOW IT HANDLES PROBLEMS:
  * 
- * Each stage is separated by pipeline registers (latches) that hold the state
- * between stages. Instructions flow through the pipeline one stage per clock cycle.
+ * Data Hazards (when an instruction needs a result that's not ready):
+ *   Phase 1: Stall the pipeline until the data is available
+ *   Phase 2: Forward the data from later stages (much faster!)
+ *   Exception: Load instructions still need 1 stall cycle
  * 
- * HAZARD HANDLING:
- * ===============
- * Phase 1: Stalls only (no forwarding)
- * Phase 2: Data forwarding + enhanced hazard detection
+ * Control Hazards (branches and jumps):
+ *   We guess that branches won't be taken
+ *   If we're wrong, flush the pipeline and jump to the right place
+ *   Costs 1 cycle when we guess wrong
  * 
- * 1. DATA HAZARDS (RAW - Read After Write):
- *    Phase 1: STALL until data is ready in register file
- *    Phase 2: FORWARD data from later stages (reduces stalls)
- *    Exception: Load-use hazards still require 1-cycle stall
+ * HOW IT WORKS:
+ * Each tick() moves the pipeline forward by one clock cycle.
+ * We process stages backwards (WB→MEM→EX→ID→IF) so each instruction
+ * only moves once per cycle.
  * 
- * 2. CONTROL HAZARDS (Branches/Jumps):
- *    - Branch prediction: Assume NOT TAKEN (optimistic)
- *    - If branch IS taken: FLUSH the wrongly-fetched instruction (1 cycle penalty)
- *    - Jumps: Always taken, always flush (1 cycle penalty)
- * 
- * 3. STRUCTURAL HAZARDS:
- *    - None in this design (separate instruction/data memory, single-issue)
- * 
- * EXECUTION MODEL:
- * ===============
- * - Each tick() advances the pipeline by exactly one clock cycle
- * - Stages process in REVERSE order (WB→MEM→EX→ID→IF) to ensure each
- *   instruction moves exactly once per cycle
- * - Pipeline drains when all instructions complete WB stage
- * 
- * PERFORMANCE METRICS:
- * ===================
- * - CPI (Cycles Per Instruction): Total cycles / Instructions completed
- * - IPC (Instructions Per Cycle): Instructions completed / Total cycles
- * - Stall counts: Data hazards vs Control hazards
- * - Forwarding events: Number of times forwarding avoided a stall (Phase 2)
+ * PERFORMANCE TRACKING:
+ * - CPI: How many cycles per instruction (lower is better)
+ * - IPC: How many instructions per cycle (higher is better)
+ * - Stalls: Wasted cycles due to hazards
+ * - Forwarding: Times we avoided a stall (Phase 2)
  */
 public class PipelineSimulator {
 
@@ -166,32 +150,23 @@ public class PipelineSimulator {
     /**
      * Advance the pipeline by one clock cycle.
      * 
-     * CRITICAL: Stages must be processed in REVERSE order (WB → MEM → EX → ID → IF)
-     * to ensure each instruction advances exactly once per cycle. If we processed
-     * forward (IF → ID → ...), an instruction could move multiple stages in one cycle.
+     * Why backwards? We process stages in reverse order (WB→MEM→EX→ID→IF)
+     * to make sure each instruction only moves once per cycle. If we went
+     * forward, an instruction could accidentally move through multiple stages.
      * 
-     * PIPELINE FLOW:
-     * =============
-     * 1. WB:  Complete the instruction, write results to register file
-     * 2. MEM: Access data memory (LOAD/STORE), promote to WB
-     * 3. EX:  Execute ALU operation (with forwarding if enabled), promote to MEM
-     * 4. FORWARDING CHECK: Detect if forwarding can resolve hazards (Phase 2)
-     * 5. HAZARD CHECK: Detect data dependencies before advancing ID/IF
-     * 6. ID:  Decode instruction, evaluate branches, handle control hazards
-     * 7. IF:  Fetch next instruction (or stall/flush based on hazards)
+     * What happens each cycle:
+     * 1. WB:  Finish the instruction, write results to registers
+     * 2. MEM: Access memory for loads/stores, move to WB
+     * 3. EX:  Do the actual computation, move to MEM
+     * 4. Check for forwarding opportunities (Phase 2)
+     * 5. Check for hazards before moving ID and IF
+     * 6. ID:  Decode instruction, check branches
+     * 7. IF:  Fetch next instruction (or stall/flush if there's a problem)
      * 
-     * HAZARD RESPONSES:
-     * ================
-     * Phase 1 (no forwarding):
-     * - RAW Data Hazard: Freeze IF and ID, inject bubble into EX
-     * 
-     * Phase 2 (with forwarding):
-     * - RAW Data Hazard + Forwarding Available: Forward data, no stall
-     * - Load-Use Hazard: Stall 1 cycle (forwarding can't help)
-     * 
-     * Both phases:
-     * - Branch Taken: Flush IF and ID, redirect PC to branch target
-     * - Normal: All stages advance, fetch next instruction
+     * When problems happen:
+     * - Data hazard: Freeze IF and ID, put a bubble in EX
+     * - Branch taken: Flush IF and ID, jump to the branch target
+     * - Normal: Everything moves forward one stage
      */
     protected void tick() {
 
@@ -322,17 +297,17 @@ public class PipelineSimulator {
     }
 
     /**
-     * ID (Instruction Decode): Read register operands and evaluate branch conditions.
+     * Decode stage: Read registers and figure out what branches do.
      * 
-     * For branches, we evaluate the condition HERE (not in EX) because:
-     * - We need to know the outcome ASAP to minimize control hazard penalty
-     * - Register values are read in this stage
-     * - Early resolution = fewer wasted cycles
+     * We evaluate branches here (not in EX) because we want to know ASAP
+     * if we need to change direction. The sooner we know, the fewer cycles
+     * we waste fetching the wrong instructions.
      * 
-     * Phase 2: Now uses branch predictor if available.
+     * Phase 2 adds branch prediction - we try to guess which way the branch
+     * will go before we actually know.
      * 
-     * @param inst The instruction being decoded
-     * @return true if a branch/jump was taken (control hazard occurred)
+     * @param inst The instruction we're decoding
+     * @return true if we're taking a branch/jump (need to flush the pipeline)
      */
     private boolean doDecode(Instruction inst) {
         switch (inst.opCode.type) {
@@ -374,21 +349,17 @@ public class PipelineSimulator {
     }
 
     /**
-     * EX (Execute): Perform ALU computation and store result in the EX latch.
+     * Execute stage: Do the actual computation.
      * 
-     * Phase 2: Now supports data forwarding from later pipeline stages.
+     * Phase 2 adds forwarding - instead of always reading from registers,
+     * we can grab results directly from later pipeline stages if they're ready.
      * 
      * The ALU handles:
-     * - Arithmetic operations (ADD, SUB, MUL, DIV)
-     * - Logical operations (AND, OR, XOR)
-     * - Effective address calculation for LOAD/STORE (base + offset)
+     * - Math (add, subtract, multiply, divide)
+     * - Logic (and, or, xor)
+     * - Address calculation for memory operations
      * 
-     * Forwarding: If enabled, operand values may come from:
-     * - EX/MEM latch (most recent ALU result)
-     * - MEM/WB latch (memory or ALU result)
-     * - Register file (normal path)
-     * 
-     * Results are stored in the pipeline register for the MEM stage to use.
+     * Results get stored in the pipeline register for the next stage.
      */
     private void doExecute(Instruction inst, PipelineRegister exLatch, ForwardingDecision fwd) {
         int a = 0, b = 0;
@@ -414,13 +385,17 @@ public class PipelineSimulator {
     }
     
     /**
-     * Gets an operand value, either from forwarding or from the register file.
+     * Get a value for an operand - either from forwarding or from registers.
      * 
-     * Phase 2: Implements the forwarding multiplexer logic.
+     * This is the "forwarding multiplexer" - it decides where to get data from:
+     * - If forwarding is off or not needed: read from register file
+     * - If forwarding from EX: grab the ALU result from the previous instruction
+     * - If forwarding from MEM: grab from memory stage (might be a load result)
+     * - If forwarding from WB: grab from writeback stage
      * 
-     * @param register Register name (e.g., "R1")
-     * @param fwdSource Where to get the value from
-     * @return The operand value
+     * @param register Which register we need (like "R1")
+     * @param fwdSource Where to get it from
+     * @return The actual value
      */
     private int getOperandValue(String register, forwarding.ForwardingSource fwdSource) {
         if (!forwardingEnabled || fwdSource == forwarding.ForwardingSource.NONE) {
@@ -431,14 +406,14 @@ public class PipelineSimulator {
         // Forward from appropriate pipeline stage
         switch (fwdSource) {
             case FROM_EX:
-                // Forward from EX/MEM latch (ALU result from previous instruction)
+                // Grab the ALU result from the instruction that just finished EX
                 stats.recordForwarding();
                 return stageMEM.getAluResult();
                 
             case FROM_MEM:
-                // Forward from MEM/WB latch
+                // Grab from the instruction in MEM stage
+                // If it was a load, use the memory value; otherwise use ALU result
                 stats.recordForwarding();
-                // If it was a LOAD, use memory result; otherwise use ALU result
                 Instruction memInst = stageWB.getInstruction();
                 if (memInst != null && !memInst.isNop() && memInst.opType() == OpType.LOAD) {
                     return stageWB.getMemResult();
@@ -447,7 +422,7 @@ public class PipelineSimulator {
                 }
                 
             case FROM_WB:
-                // Forward from WB stage (rare - could also read from register file)
+                // Grab from writeback stage (rare but possible)
                 stats.recordForwarding();
                 Instruction wbInst = stageWB.getInstruction();
                 if (wbInst != null && !wbInst.isNop() && wbInst.opType() == OpType.LOAD) {
@@ -462,13 +437,13 @@ public class PipelineSimulator {
     }
 
     /**
-     * MEM (Memory Access): Read from or write to data memory.
+     * Memory stage: Read from or write to memory.
      * 
-     * - LOAD:  Read from memory at computed address, store in memResult
-     * - STORE: Write register value to memory at computed address
-     * - Other: Pass through (no memory operation)
+     * - LOAD:  Read from memory, save the value
+     * - STORE: Write a register value to memory
+     * - Everything else: Just pass through
      * 
-     * The address comes from the ALU result computed in the EX stage.
+     * The address comes from the ALU (calculated in EX stage).
      */
     private void doMemoryAccess(Instruction inst,
                                 PipelineRegister exLatch,
@@ -487,13 +462,13 @@ public class PipelineSimulator {
     }
 
     /**
-     * WB (Write Back): Write the final result to the register file.
+     * Writeback stage: Save the final result to a register.
      * 
-     * - Arithmetic/Logical: Write ALU result to destination register
-     * - LOAD: Write memory data to destination register
-     * - STORE/Branch/Jump: No write-back needed
+     * - Math/logic instructions: Write the ALU result
+     * - Load instructions: Write the value from memory
+     * - Stores/branches/jumps: Nothing to write
      * 
-     * This is the final stage - instruction is now complete and retired.
+     * This is the last stage - the instruction is done!
      */
     private void doWriteBack(Instruction inst, PipelineRegister memLatch) {
         switch (inst.opCode.type) {

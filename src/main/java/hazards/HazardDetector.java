@@ -6,97 +6,67 @@ import isa.Instruction;
 import isa.OpType;
 
 /**
- * Hazard Detection Unit - Phase 2 (With Forwarding Support)
+ * Hazard Detector - Finds problems before they cause errors
  * 
- * OVERVIEW:
- * ========
- * This unit identifies pipeline hazards and determines the appropriate response.
- * Phase 2 adds forwarding support - stalls are only needed when forwarding cannot resolve the hazard.
+ * This unit spots three types of problems:
  * 
- * THREE TYPES OF HAZARDS:
- * ======================
- * 
- * 1. DATA HAZARDS (RAW - Read After Write)
- *    ----------------------------------------
- *    Occurs when an instruction needs a register that's still being computed
- *    by a previous instruction that hasn't completed yet.
+ * 1. DATA HAZARDS (Read-After-Write)
+ *    When an instruction needs a value that's still being calculated.
  *    
  *    Example:
- *      ADD R1, R2, R3    # R1 is being computed
- *      ADD R4, R1, R5    # Needs R1 but it's not ready yet!
+ *      ADD R1, R2, R3    // R1 is being calculated
+ *      ADD R4, R1, R5    // Needs R1 but it's not ready!
  *    
- *    Phase 1 Solution: STALL until R1 is written to register file
- *    Phase 2 Solution: FORWARD R1 from EX/MEM latch (no stall needed!)
+ *    Phase 1: Stall until R1 is written to the register file
+ *    Phase 2: Forward R1 from the pipeline (no stall needed!)
  *    
  *    Exception - Load-Use Hazard:
- *      LOAD R1, 0(R2)    # R1 not available until MEM completes
- *      ADD  R4, R1, R5   # Needs R1 immediately
+ *      LOAD R1, 0(R2)    // R1 won't be ready until memory access completes
+ *      ADD  R4, R1, R5   // Needs R1 right away
  *    
- *    Even with forwarding, we must stall 1 cycle because the loaded value
- *    isn't available until the MEM stage completes.
+ *    Even with forwarding, we have to stall 1 cycle because the memory
+ *    value isn't available yet.
  * 
  * 2. CONTROL HAZARDS (Branches and Jumps)
- *    ---------------------------------------
- *    Occurs when we don't know which instruction to fetch next because a
- *    branch/jump hasn't been resolved yet.
+ *    When we don't know which instruction to fetch next.
  *    
- *    Strategy: Assume branches are NOT TAKEN (optimistic prediction)
- *    - If branch NOT taken: Continue normally (prediction was correct)
- *    - If branch IS taken: FLUSH the wrong instruction from IF (1 cycle penalty)
- *    - Jumps: Always taken, always flush (1 cycle penalty)
- *    
- *    Example:
- *      BEQ R1, R2, TARGET    # Branch resolves in ID stage
- *      ADD R3, R4, R5        # Already fetched, but might be wrong!
- *      
- *    If branch is taken, the ADD must be flushed (converted to bubble).
+ *    We guess that branches won't be taken. If we're wrong, we have to
+ *    throw away the instruction we already fetched (costs 1 cycle).
+ *    Jumps always flush because they're always taken.
  * 
  * 3. STRUCTURAL HAZARDS
- *    --------------------
- *    Occurs when multiple instructions need the same hardware resource.
+ *    When two instructions need the same hardware at the same time.
  *    
- *    This pipeline has NO structural hazards because:
- *    - Separate instruction and data memories (Harvard architecture)
- *    - Single-issue (only one instruction per stage)
- *    - Dedicated hardware for each stage
- *    
- *    (Included for completeness and future phases)
- * 
- * PHASE 2 CHANGES:
- * ===============
- * - detectRAW() now considers forwarding
- * - New method: needsStallWithForwarding() determines if stall is still needed
- * - Load-use hazards always require stalls (forwarding can't help)
+ *    Our design doesn't have these because:
+ *    - Separate instruction and data memory
+ *    - Only one instruction per stage
+ *    - Enough hardware for everyone
  */
 public class HazardDetector {
 
     // ── Data Hazard (RAW) ─────────────────────────────────────────────────
 
     /**
-     * Detects Read-After-Write (RAW) data hazards.
+     * Check if there's a data hazard (Read-After-Write).
      * 
-     * Phase 2: This method now considers whether forwarding can resolve the hazard.
-     * Returns true only if a stall is REQUIRED (forwarding cannot help).
+     * A hazard exists when:
+     * 1. The instruction in ID wants to read a register
+     * 2. An instruction in EX or MEM is going to write to that register
+     * 3. The write hasn't happened yet
      * 
-     * A RAW hazard exists when:
-     * 1. The instruction in ID needs to READ a register (rs1 or rs2)
-     * 2. An instruction in EX or MEM will WRITE to that same register
-     * 3. The write hasn't completed yet (hasn't reached WB)
-     * 
-     * Visual example:
-     * 
+     * Example:
      *   Cycle 3:
      *   IF: SUB R6, R4, R1
-     *   ID: ADD R4, R1, R5  ← needs R1
-     *   EX: ADD R1, R2, R3  ← will write R1 (not ready yet!)
+     *   ID: ADD R4, R1, R5  ← wants to read R1
+     *   EX: ADD R1, R2, R3  ← will write R1 (not done yet!)
      *   
-     *   Phase 1: STALL! ID can't proceed until R1 is written.
-     *   Phase 2: FORWARD! Use R1 from EX/MEM latch (no stall needed).
+     *   Phase 1: Stall! Can't proceed until R1 is ready.
+     *   Phase 2: Forward! Grab R1 from the EX/MEM latch.
      * 
-     * @param idInst   Instruction in ID stage (consumer)
-     * @param exInst   Instruction in EX stage (potential producer)
-     * @param memInst  Instruction in MEM stage (potential producer)
-     * @return true if a RAW hazard exists and pipeline must stall
+     * @param idInst   Instruction that needs data (in ID stage)
+     * @param exInst   Instruction that might produce it (in EX stage)
+     * @param memInst  Instruction that might produce it (in MEM stage)
+     * @return true if there's a hazard
      */
     public boolean detectRAW(Instruction idInst,
                              Instruction exInst,
@@ -120,26 +90,26 @@ public class HazardDetector {
     }
     
     /**
-     * Determines if a stall is needed even with forwarding available.
+     * Check if we still need to stall even with forwarding.
      * 
-     * Phase 2: Most RAW hazards can be resolved with forwarding, but
-     * load-use hazards still require a 1-cycle stall.
+     * Most hazards can be fixed with forwarding, but load-use hazards
+     * still need a stall because the memory value isn't ready yet.
      * 
-     * Load-Use Hazard Example:
-     *   LOAD R1, 0(R2)    # R1 not available until MEM stage completes
-     *   ADD  R4, R1, R5   # Needs R1 immediately in EX stage
+     * Load-Use Hazard:
+     *   LOAD R1, 0(R2)    // R1 won't be ready until MEM completes
+     *   ADD  R4, R1, R5   // Needs R1 in EX stage
      *   
      * Timeline:
-     *   Cycle N:   LOAD in EX (computing address)
-     *   Cycle N+1: LOAD in MEM (reading memory) ← R1 becomes available HERE
+     *   Cycle N:   LOAD in EX (calculating address)
+     *   Cycle N+1: LOAD in MEM (reading memory) ← R1 ready HERE
      *              ADD in EX (needs R1) ← Too early! R1 not ready yet!
      *   
-     * Solution: Stall ADD for 1 cycle, then forward from MEM/WB latch.
+     * Solution: Stall ADD for 1 cycle, then forward from MEM/WB.
      * 
      * @param idInst           Instruction in ID stage
      * @param exInst           Instruction in EX stage
-     * @param forwardingNeeded Whether forwarding was detected
-     * @return true if a stall is required despite forwarding
+     * @param forwardingNeeded Whether we detected a forwarding opportunity
+     * @return true if we still need to stall
      */
     public boolean needsStallWithForwarding(Instruction idInst,
                                            Instruction exInst,
