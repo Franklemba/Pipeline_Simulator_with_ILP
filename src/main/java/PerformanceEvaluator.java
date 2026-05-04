@@ -40,12 +40,12 @@ public class PerformanceEvaluator {
 
     static final String WORKLOAD_MEMORY =
         "# Memory-intensive workload\n" +
-        "LOAD R1, R0, 100\n" +
-        "ADD  R2, R1, R3\n" +
-        "STORE R2, R0, 200\n" +
-        "LOAD R4, R0, 104\n" +
-        "ADD  R5, R4, R6\n" +
-        "STORE R5, R0, 204\n";
+        "LOAD R1, 0(R2)\n" +
+        "LOAD R3, 4(R2)\n" +
+        "ADD R4, R1, R3\n" +
+        "STORE R4, 8(R2)\n" +
+        "LOAD R5, 8(R2)\n" +
+        "ADD R6, R5, R4\n";
 
     static final String WORKLOAD_BRANCH =
         "# Branch-heavy workload\n" +
@@ -59,13 +59,14 @@ public class PerformanceEvaluator {
 
     static final String WORKLOAD_LOOP =
         "# Loop-based workload\n" +
-        "ADD  R1, R0, R0\n" +
-        "ADD  R2, R0, R0\n" +
+        "# R4=1 (step), R5=3 (limit) — pre-loaded before run\n" +
+        "ADD R3, R0, R0\n" +
+        "ADD R1, R0, R0\n" +
         "LOOP:\n" +
-        "ADD  R1, R1, R2\n" +
-        "ADD  R2, R2, R3\n" +
-        "BNE  R2, R4, LOOP\n" +
-        "ADD  R5, R1, R0\n";
+        "ADD R1, R1, R2\n" +
+        "ADD R3, R3, R4\n" +
+        "BNE R3, R5, LOOP\n" +
+        "ADD R6, R1, R0\n";
 
     // ═══════════════════════════════════════════════════════════════════════
     //  CONFIGURATION DEFINITIONS
@@ -125,7 +126,7 @@ public class PerformanceEvaluator {
             new Configuration("Basic Pipeline", false, null, false),
             new Configuration("Pipeline + Forwarding", true, null, false),
             new Configuration("Pipeline + Forwarding + Branch Prediction", true, new TwoBitPredictor(), false),
-            new Configuration("Superscalar (2-way)", true, new TwoBitPredictor(), false)
+            new Configuration("Superscalar (2-way)", true, new TwoBitPredictor(), true)
         );
 
         // Define all workloads
@@ -198,10 +199,15 @@ public class PerformanceEvaluator {
                 predictor.reset();
             }
             
-            // Initialize for loop workload
+            // Initialize workload-specific data
+            if (workloadName.equals("Memory")) {
+                sim.getDataMemory().init(0, 10);   // mem[0] = 10
+                sim.getDataMemory().init(4, 20);   // mem[4] = 20
+            }
             if (workloadName.equals("Loop")) {
-                sim.getRegisterFile().init("R3", 1);
-                sim.getRegisterFile().init("R4", 4);
+                sim.getRegisterFile().init("R4", 1);  // step = 1
+                sim.getRegisterFile().init("R5", 3);  // limit = 3
+                sim.getRegisterFile().init("R2", 5);  // accumulator value
             }
             
             sim.load(prog.instructions);
@@ -216,10 +222,15 @@ public class PerformanceEvaluator {
                 sim.setBranchPredictor(predictor);
             }
             
-            // Initialize for loop workload
+            // Initialize workload-specific data
+            if (workloadName.equals("Memory")) {
+                sim.getDataMemory().init(0, 10);   // mem[0] = 10
+                sim.getDataMemory().init(4, 20);   // mem[4] = 20
+            }
             if (workloadName.equals("Loop")) {
-                sim.getRegisterFile().init("R3", 1);
-                sim.getRegisterFile().init("R4", 4);
+                sim.getRegisterFile().init("R4", 1);  // step = 1
+                sim.getRegisterFile().init("R5", 3);  // limit = 3
+                sim.getRegisterFile().init("R2", 5);  // accumulator value
             }
             
             sim.load(prog.instructions);

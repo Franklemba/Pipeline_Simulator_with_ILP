@@ -51,6 +51,17 @@ public class MainPhase2Complete {
         "BNE  R2, R4, LOOP\n" +  // if i != 4, repeat (R4=4, pre-loaded)
         "ADD  R5, R1, R0\n";     // store result
 
+    static final String WORKLOAD_LOOP_MAIN =
+        "# Loop-based workload\n" +
+        "# R4=1 (step), R5=3 (limit) — pre-loaded before run\n" +
+        "ADD R3, R0, R0\n" +
+        "ADD R1, R0, R0\n" +
+        "LOOP:\n" +
+        "ADD R1, R1, R2\n" +
+        "ADD R3, R3, R4\n" +
+        "BNE R3, R5, LOOP\n" +
+        "ADD R6, R1, R0\n";
+
     static final String WORKLOAD_LOOP_UNROLLED =
         "# Unrolled loop: sum = 0+1+2+3\n" +
         "ADD  R1, R0, R0\n" +    // sum = 0
@@ -85,38 +96,79 @@ public class MainPhase2Complete {
         "ADD R8, R1, R0\n";      // Depends on R1
 
     public static void main(String[] args) {
+        // If an argument is provided, run only that part.
+        // Usage: mvn exec:java -Dexec.args="<part>"
+        // Valid values: forwarding, branch, ilp, unrolling, superscalar, all
+        if (args.length > 0) {
+            String part = args[0].toLowerCase();
+            switch (part) {
+                case "forwarding":
+                    printHeader("PART 1: DATA FORWARDING");
+                    demonstrateForwarding();
+                    break;
+                case "branch":
+                    printHeader("PART 2: BRANCH PREDICTION");
+                    demonstrateBranchPrediction();
+                    break;
+                case "ilp":
+                    printHeader("PART 3: INSTRUCTION LEVEL PARALLELISM");
+                    demonstrateILP();
+                    break;
+                case "unrolling":
+                    printHeader("PART 4: LOOP UNROLLING");
+                    demonstrateLoopUnrolling();
+                    break;
+                case "superscalar":
+                    printHeader("PART 5: SUPERSCALAR EXECUTION");
+                    demonstrateSuperscalar();
+                    break;
+                case "all":
+                    runAll();
+                    break;
+                default:
+                    System.out.println("Unknown part: " + args[0]);
+                    System.out.println("Valid options: forwarding, branch, ilp, unrolling, superscalar, all");
+            }
+            return;
+        }
+
+        // No argument — run everything
+        runAll();
+    }
+
+    static void runAll() {
         printHeader("PHASE 2: COMPLETE DEMONSTRATION");
-        
+
         // Part 1: Data Forwarding
         System.out.println("\n" + "═".repeat(110));
         System.out.println("PART 1: DATA FORWARDING");
         System.out.println("═".repeat(110));
         demonstrateForwarding();
-        
+
         // Part 2: Branch Prediction
         System.out.println("\n" + "═".repeat(110));
         System.out.println("PART 2: BRANCH PREDICTION");
         System.out.println("═".repeat(110));
         demonstrateBranchPrediction();
-        
+
         // Part 3: ILP Analysis
         System.out.println("\n" + "═".repeat(110));
         System.out.println("PART 3: INSTRUCTION LEVEL PARALLELISM");
         System.out.println("═".repeat(110));
         demonstrateILP();
-        
+
         // Part 4: Loop Unrolling
         System.out.println("\n" + "═".repeat(110));
         System.out.println("PART 4: LOOP UNROLLING");
         System.out.println("═".repeat(110));
         demonstrateLoopUnrolling();
-        
+
         // Part 5: Superscalar Execution
         System.out.println("\n" + "═".repeat(110));
         System.out.println("PART 5: SUPERSCALAR EXECUTION");
         System.out.println("═".repeat(110));
         demonstrateSuperscalar();
-        
+
         // Summary
         printSummary();
     }
@@ -127,10 +179,29 @@ public class MainPhase2Complete {
 
     static void demonstrateForwarding() {
         System.out.println("\nComparing pipeline performance WITH and WITHOUT data forwarding:\n");
-        
-        Statistics noFwd = runSimulation("Arithmetic", WORKLOAD_ARITHMETIC, false, null);
-        Statistics withFwd = runSimulation("Arithmetic", WORKLOAD_ARITHMETIC, true, null);
-        
+
+        Assembler asm1 = new Assembler();
+        Assembler.Program prog1 = asm1.assemble(WORKLOAD_ARITHMETIC);
+
+        System.out.println("── WITHOUT Forwarding (Phase 1 behaviour) ──────────────────────────────");
+        PipelineSimulator simNoFwd = new PipelineSimulator();
+        simNoFwd.setForwardingEnabled(false);
+        simNoFwd.setVerbose(true);          // show full cycle-by-cycle table
+        simNoFwd.load(prog1.instructions);
+        Statistics noFwd = simNoFwd.run();
+        simNoFwd.printResults();
+
+        Assembler asm2 = new Assembler();
+        Assembler.Program prog2 = asm2.assemble(WORKLOAD_ARITHMETIC);
+
+        System.out.println("\n── WITH Forwarding (Phase 2 behaviour) ─────────────────────────────────");
+        PipelineSimulator simWithFwd = new PipelineSimulator();
+        simWithFwd.setForwardingEnabled(true);
+        simWithFwd.setVerbose(true);        // show full cycle-by-cycle table
+        simWithFwd.load(prog2.instructions);
+        Statistics withFwd = simWithFwd.run();
+        simWithFwd.printResults();
+
         printForwardingComparison(noFwd, withFwd);
     }
 
@@ -158,7 +229,7 @@ public class MainPhase2Complete {
 
     static void demonstrateBranchPrediction() {
         System.out.println("\nComparing different branch prediction strategies:\n");
-        
+
         // Create all predictors
         BranchPredictor[] predictors = {
             new StaticPredictors.AlwaysNotTaken(),
@@ -167,19 +238,42 @@ public class MainPhase2Complete {
             new OneBitPredictor(),
             new TwoBitPredictor()
         };
-        
-        // Test with branch-heavy workload
-        System.out.println("Testing with BRANCH workload:");
+
+        // ── BRANCH workload ───────────────────────────────────────────────
+
+        // 1. Show verbose pipeline trace for the 2-bit predictor as a representative example
+        System.out.println("── Cycle-by-cycle trace (2-Bit Saturating Counter, BRANCH workload) ──────");
+        {
+            Assembler asm = new Assembler();
+            Assembler.Program prog = asm.assemble(WORKLOAD_BRANCH);
+            PipelineSimulator traceSim = new PipelineSimulator();
+            traceSim.setForwardingEnabled(true);
+            traceSim.setBranchPredictor(new TwoBitPredictor());
+            traceSim.setVerbose(true);
+            traceSim.load(prog.instructions);
+            traceSim.run();
+            traceSim.printResults();
+        }
+
+        // 2. Summary table — all predictors, verbose=false so stats are clean
+        System.out.println("\nSummary — BRANCH workload (all predictors):");
         System.out.println("─".repeat(90));
-        System.out.printf("%-35s │ %8s │ %10s │ %8s │ %6s\n", 
+        System.out.printf("%-35s │ %8s │ %10s │ %10s │ %6s%n",
             "Predictor", "Cycles", "Accuracy", "Mispredict", "CPI");
         System.out.println("─".repeat(90));
-        
+
         for (BranchPredictor predictor : predictors) {
             predictor.reset();
-            Statistics stats = runSimulation("Branch", WORKLOAD_BRANCH, true, predictor);
-            
-            System.out.printf("%-35s │ %8d │ %9.1f%% │ %8d │ %6.2f\n",
+            Assembler asm = new Assembler();
+            Assembler.Program prog = asm.assemble(WORKLOAD_BRANCH);
+            PipelineSimulator sim = new PipelineSimulator();
+            sim.setForwardingEnabled(true);
+            sim.setBranchPredictor(predictor);
+            sim.setVerbose(false);
+            sim.load(prog.instructions);
+            Statistics stats = sim.run();
+
+            System.out.printf("%-35s │ %8d │ %9.1f%% │ %10d │ %6.2f%n",
                 predictor.getName(),
                 stats.getTotalCycles(),
                 predictor.getAccuracy() * 100,
@@ -187,19 +281,48 @@ public class MainPhase2Complete {
                 stats.cpi());
         }
         System.out.println("─".repeat(90));
-        
-        // Test with loop workload
-        System.out.println("\nTesting with LOOP workload:");
+
+        // ── LOOP workload ─────────────────────────────────────────────────
+
+        // 1. Verbose trace for 2-bit predictor
+        System.out.println("\n── Cycle-by-cycle trace (2-Bit Saturating Counter, LOOP workload) ────────");
+        {
+            Assembler asm = new Assembler();
+            Assembler.Program prog = asm.assemble(WORKLOAD_LOOP_MAIN);
+            PipelineSimulator traceSim = new PipelineSimulator();
+            traceSim.setForwardingEnabled(true);
+            traceSim.setBranchPredictor(new TwoBitPredictor());
+            traceSim.setVerbose(true);
+            traceSim.getRegisterFile().init("R4", 1);
+            traceSim.getRegisterFile().init("R5", 3);
+            traceSim.getRegisterFile().init("R2", 5);
+            traceSim.load(prog.instructions);
+            traceSim.run();
+            traceSim.printResults();
+        }
+
+        // 2. Summary table — all predictors
+        System.out.println("\nSummary — LOOP workload (all predictors):");
         System.out.println("─".repeat(90));
-        System.out.printf("%-35s │ %8s │ %10s │ %8s │ %6s\n", 
+        System.out.printf("%-35s │ %8s │ %10s │ %10s │ %6s%n",
             "Predictor", "Cycles", "Accuracy", "Mispredict", "CPI");
         System.out.println("─".repeat(90));
-        
+
         for (BranchPredictor predictor : predictors) {
             predictor.reset();
-            Statistics stats = runSimulation("Loop", WORKLOAD_LOOP_ORIGINAL, true, predictor);
-            
-            System.out.printf("%-35s │ %8d │ %9.1f%% │ %8d │ %6.2f\n",
+            Assembler asm = new Assembler();
+            Assembler.Program prog = asm.assemble(WORKLOAD_LOOP_MAIN);
+            PipelineSimulator sim = new PipelineSimulator();
+            sim.setForwardingEnabled(true);
+            sim.setBranchPredictor(predictor);
+            sim.setVerbose(false);
+            sim.getRegisterFile().init("R4", 1);
+            sim.getRegisterFile().init("R5", 3);
+            sim.getRegisterFile().init("R2", 5);
+            sim.load(prog.instructions);
+            Statistics stats = sim.run();
+
+            System.out.printf("%-35s │ %8d │ %9.1f%% │ %10d │ %6.2f%n",
                 predictor.getName(),
                 stats.getTotalCycles(),
                 predictor.getAccuracy() * 100,
@@ -207,7 +330,7 @@ public class MainPhase2Complete {
                 stats.cpi());
         }
         System.out.println("─".repeat(90));
-        
+
         System.out.println("\n💡 Key Insights:");
         System.out.println("   • Dynamic predictors (1-bit, 2-bit) learn from history");
         System.out.println("   • 2-bit predictor is most stable (tolerates single mispredictions)");
@@ -312,7 +435,7 @@ public class MainPhase2Complete {
         PipelineSimulator scalarSim = new PipelineSimulator();
         scalarSim.setForwardingEnabled(true);
         scalarSim.setBranchPredictor(new TwoBitPredictor());
-        scalarSim.setVerbose(false);
+        scalarSim.setVerbose(true);
         scalarSim.load(prog1.instructions);
         Statistics scalarStats = scalarSim.run();
         
@@ -321,7 +444,7 @@ public class MainPhase2Complete {
         Assembler.Program prog2 = asm2.assemble(WORKLOAD_ILP_FRIENDLY);
         
         SuperscalarSimulator superscalarSim = new SuperscalarSimulator();
-        superscalarSim.setVerbose(false);
+        superscalarSim.setVerbose(true);
         superscalarSim.load(prog2.instructions);
         Statistics superscalarStats = superscalarSim.run();
         
@@ -362,7 +485,7 @@ public class MainPhase2Complete {
         PipelineSimulator scalarSim2 = new PipelineSimulator();
         scalarSim2.setForwardingEnabled(true);
         scalarSim2.setBranchPredictor(new TwoBitPredictor());
-        scalarSim2.setVerbose(false);
+        scalarSim2.setVerbose(true);
         scalarSim2.load(prog3.instructions);
         Statistics scalarStats2 = scalarSim2.run();
         
@@ -371,7 +494,7 @@ public class MainPhase2Complete {
         Assembler.Program prog4 = asm4.assemble(WORKLOAD_ILP_UNFRIENDLY);
         
         SuperscalarSimulator superscalarSim2 = new SuperscalarSimulator();
-        superscalarSim2.setVerbose(false);
+        superscalarSim2.setVerbose(true);
         superscalarSim2.load(prog4.instructions);
         Statistics superscalarStats2 = superscalarSim2.run();
         
@@ -418,12 +541,13 @@ public class MainPhase2Complete {
         if (predictor != null) {
             sim.setBranchPredictor(predictor);
         }
-        sim.setVerbose(false);
+        sim.setVerbose(true);
         
         // Initialize test data for loops
         if (name.contains("Loop")) {
-            sim.getRegisterFile().init("R3", 1);  // step = 1
-            sim.getRegisterFile().init("R4", 4);  // limit = 4
+            sim.getRegisterFile().init("R4", 1);  // step = 1
+            sim.getRegisterFile().init("R5", 3);  // limit = 3
+            sim.getRegisterFile().init("R2", 5);  // accumulator value
         }
         
         sim.load(prog.instructions);

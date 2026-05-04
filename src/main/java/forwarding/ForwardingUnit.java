@@ -30,6 +30,7 @@ import isa.Instruction;
  * 
  * We still have to stall 1 cycle even with forwarding.
  */
+
 public class ForwardingUnit {
 
     /**
@@ -74,6 +75,8 @@ public class ForwardingUnit {
      * 3. WB stage
      * 4. No forwarding needed (register file is fine)
      */
+
+    
     private ForwardingSource detectForwardingForOperand(String operandReg,
                                                         Instruction exInst,
                                                         Instruction memInst,
@@ -106,6 +109,7 @@ public class ForwardingUnit {
      * 2. It writes to a register
      * 3. The register matches what we need
      */
+    
     private boolean canForwardFrom(Instruction producer, String operandReg) {
         if (producer == null || producer.isNop()) {
             return false;

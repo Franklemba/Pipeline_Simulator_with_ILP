@@ -73,7 +73,7 @@ public class StaticPredictors {
         
         @Override
         public String getName() {
-            return "BTFNT (Backward Taken, Forward Not Taken)";
+            return "BTFNT";
         }
         
         @Override

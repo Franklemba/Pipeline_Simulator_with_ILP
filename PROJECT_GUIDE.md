@@ -180,9 +180,6 @@ pipeline-simulator/
 ├── pom.xml                          # Maven configuration
 ├── README.md                        # Quick overview
 ├── PROJECT_GUIDE.md                 # This file (complete guide)
-├── ASSIGNMENT_PROGRESS.md           # Progress tracking
-├── PHASE2_COMPLETE.md               # Phase 2 detailed report
-│
 ├── src/main/java/
 │   ├── Main.java                    # Phase 1 entry point
 │   ├── MainPhase2Complete.java      # Phase 2 demonstration
